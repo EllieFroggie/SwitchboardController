@@ -47,9 +47,6 @@ int main(int argc, char *argv[]) {
   Spotify spot;
   int sink;
 
-  int maxfd;
-  int activity;
-
   if (!serial.openPort()) {
     std::cerr << "Failed to open port.\n";
     return 1;
@@ -72,6 +69,9 @@ int main(int argc, char *argv[]) {
 
   int fd1 = serial.getFD();
   int fd2 = serial2.getFD();
+
+  int maxfd;
+  int activity;
 
   fd_set readfds;
 
