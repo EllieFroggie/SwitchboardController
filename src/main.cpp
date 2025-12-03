@@ -47,6 +47,9 @@ int main(int argc, char *argv[]) {
   Spotify spot;
   int sink;
 
+  int maxfd;
+  int activity;
+
   if (!serial.openPort()) {
     std::cerr << "Failed to open port.\n";
     return 1;
@@ -80,8 +83,8 @@ int main(int argc, char *argv[]) {
     FD_SET(fd1, &readfds);
     FD_SET(fd2, &readfds);
 
-    int maxfd = (fd1 > fd2 ? fd1 : fd2) + 1;
-    int activity = select(maxfd, &readfds, NULL, NULL, NULL);
+    maxfd = (fd1 > fd2 ? fd1 : fd2) + 1;
+    activity = select(maxfd, &readfds, NULL, NULL, NULL);
 
     if (activity < 0) {
       std::cerr << "select error: " << strerror(errno) << "\n";
