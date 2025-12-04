@@ -1,11 +1,13 @@
 #include "SerialPort.h"
 #include "Spotify.h"
 #include <cmath>
+#include <csignal>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <unistd.h>
 #include <cstring>
+#include <regex>
 
 using namespace std;
 
@@ -19,12 +21,15 @@ Add shutdown handling & timeouts.
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 
+//void handleSIGINT(int signal) {
+//
+//}
+
 int main(int argc, char *argv[]) {
 
   SerialPort serial("/dev/ttyUSB1", 9600);
   SerialPort serial2("/dev/ttyUSB0", 9600);
-  string newData;
-  string newData2;
+  std::string data;
   string serialData;
   string serialData2;
 
@@ -46,6 +51,8 @@ int main(int argc, char *argv[]) {
 
   Spotify spot;
   int sink;
+
+  std::regex numRegex(R"(^\d+$)");
 
   if (!serial.openPort()) {
     std::cerr << "Failed to open port.\n";
@@ -91,9 +98,9 @@ int main(int argc, char *argv[]) {
       continue;
     }
 
-    // Arduino 1
+    // Arduino 1 (Knobs)
     if (FD_ISSET(fd1, &readfds)) {
-      std::string data = serial.readData();
+      data = serial.readData();
       if (!data.empty()) {
         std::cout << data;
         
@@ -101,14 +108,15 @@ int main(int argc, char *argv[]) {
         if (p == string::npos) continue;
         knobString = data.substr(0, p);
         valueString = data.substr(p + 1);
+        valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
 
         if (!knobString.empty()) {
             knob = stoi(knobString);
         } else knob = -1;
 
-        if (!valueString.empty()) {
-            value = stoi(valueString);
-            percent = floor((value / 1023.0f) * 100);
+        if (!valueString.empty() && std::regex_match(valueString, numRegex)) {
+          value = stoi(valueString);
+          percent = floor((value / 1023.0f) * 100);
         } else value = -1;
 
         switch(knob) {
@@ -116,7 +124,7 @@ int main(int argc, char *argv[]) {
           sink = spot.get_sink();
           if (sink != -1) {
             command = "pactl set-sink-input-volume " + to_string(sink) + " " + to_string(percent) + "%";
-            std::string result = exec(command.c_str());
+            exec(command.c_str());
           } else cout << "Spotify Not Detected!" << endl;
           break;
 
@@ -129,9 +137,9 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    // Arduino 2
+    // Arduino 2 (Switches)
     if (FD_ISSET(fd2, &readfds)) {
-      std::string data = serial2.readData();
+      data = serial2.readData();
       if (!data.empty()) {
         std::cout << data;
 
