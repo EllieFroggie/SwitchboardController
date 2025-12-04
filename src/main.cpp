@@ -30,8 +30,6 @@ int main(int argc, char *argv[]) {
   SerialPort serial("/dev/ttyUSB1", 9600);
   SerialPort serial2("/dev/ttyUSB0", 9600);
   std::string data;
-  string serialData;
-  string serialData2;
 
   size_t p;
   string knobString;
