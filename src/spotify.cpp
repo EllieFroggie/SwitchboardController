@@ -7,6 +7,7 @@
 using namespace std;
 using json = nlohmann::json;
 
+// super not safe but will have to do for now
 std::string exec(const char* cmd) {
     std::array<char, 256> buffer{};
     std::string result;
@@ -38,7 +39,7 @@ int Spotify::get_sink() {
         j = json::parse(std::string(exec("pactl -f json list sink-inputs")));
     } catch (const std::exception& e) {
         std::cerr << "JSON parse error: " << e.what() << endl;
-        return -1;
+        return 1;
     }
     int index = -1;
 
