@@ -33,7 +33,13 @@ std::string remove_quotes(std::string input) {
 }
 
 int Spotify::get_sink() {
-    json j = json::parse(std::string(exec("pactl -f json list sink-inputs")));
+    json j;
+    try {
+        j = json::parse(std::string(exec("pactl -f json list sink-inputs")));
+    } catch (const std::exception& e) {
+        std::cerr << "JSON parse error: " << e.what() << endl;
+        return -1;
+    }
     int index = -1;
 
     for(int i = 0; i < size(j); i++) {
