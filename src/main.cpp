@@ -43,7 +43,6 @@ int main(int argc, char *argv[]) {
   int switchID;
   int switchValue;
 
-  string command;
   string speakers = "alsa_output.pci-0000_00_1f.3.analog-stereo ";
   string headphones = "alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line1__sink";
 
@@ -121,14 +120,12 @@ int main(int argc, char *argv[]) {
         case 20:
           sink = spot.get_sink();
           if (sink != -1) {
-            command = "pactl set-sink-input-volume " + to_string(sink) + " " + to_string(percent) + "%";
-            exec(command.c_str());
+            exec(std::string("pactl set-sink-input-volume " + to_string(sink) + " " + to_string(percent) + "%").c_str());
           } else cout << "Spotify Not Detected!" << endl;
           break;
 
         case 14:
-          command = "pactl set-sink-volume " + speakers + to_string(percent) + "%";
-          exec(command.c_str());
+          exec(std::string("pactl set-sink-volume " + speakers + to_string(percent) + "%").c_str());
           break;
         }
 
@@ -158,11 +155,9 @@ int main(int argc, char *argv[]) {
 
             case 1: 
                 if (switchValue == 1) {
-                    command = "pactl set-default-sink " + speakers;
-                    exec(command.c_str());
+                    exec(std::string("pactl set-default-sink " + speakers).c_str());
                 } else if (switchValue == 0) {
-                    command = "pactl set-default-sink " + headphones;
-                    exec(command.c_str());
+                    exec(std::string("pactl set-default-sink " + headphones).c_str());
                 }
                 break;
             
@@ -183,7 +178,6 @@ int main(int argc, char *argv[]) {
                 break;
 
         }
-
       }
     }
   }
