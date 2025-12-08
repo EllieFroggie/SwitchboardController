@@ -44,16 +44,12 @@ int main(int argc, char *argv[]) {
   int switchID;
   int switchValue;
 
+  bool switch3;
   bool spotifyPickup = false;
   bool discordPickup = false;
 
   int spotifyPercent = 40;
   int discordPercent = 120;
-
-  bool switch3;
-
-  string speakers = "alsa_output.pci-0000_00_1f.3.analog-stereo ";
-  string headphones = "alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line1__sink";
 
   Spotify spot;
   int* sink;
@@ -179,6 +175,7 @@ int main(int argc, char *argv[]) {
             }
           } else { // switch3 == false
             if (sink[1] != -1) {
+
               cout << "Ps: " << spotifyPercent << endl;
               cout << "P: " << percent << endl;
               cout << "M: " << spotifyPickup << "\n" << endl;;
@@ -203,7 +200,7 @@ int main(int argc, char *argv[]) {
           break;
 
         case 14:
-          exec(std::string("pactl set-sink-volume " + speakers + to_string(percent) + "%").c_str());
+          exec(std::string("pactl set-sink-volume alsa_output.pci-0000_00_1f.3.analog-stereo " + to_string(percent) + "%").c_str());
           break;
         }
 
@@ -218,6 +215,7 @@ int main(int argc, char *argv[]) {
 
         p = data.find(":");
         if (p == string::npos) continue;
+        
         switchString = data.substr(0, p);
         switchValueString = data.substr(p + 1);
 
@@ -233,9 +231,9 @@ int main(int argc, char *argv[]) {
 
             case 1: 
                 if (switchValue == 1) {
-                    exec(std::string("pactl set-default-sink " + speakers).c_str());
+                    exec(std::string("pactl set-default-sink alsa_output.pci-0000_00_1f.3.analog-stereo").c_str()); // Speakers
                 } else if (switchValue == 0) {
-                    exec(std::string("pactl set-default-sink " + headphones).c_str());
+                    exec(std::string("pactl set-default-sink alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line1__sink").c_str()); // Headphones
                 }
                 break;
             
