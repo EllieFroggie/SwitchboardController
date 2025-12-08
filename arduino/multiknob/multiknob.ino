@@ -1,8 +1,13 @@
+#include <Oversampling.h>
+
+Oversampling adc(10, 13, 1);
 
 int readPot(uint8_t sensor) {
   static int PREVIOUS[16];
-  static int DIFF = -1;
+  static double DIFF = -1;
   static bool INIT = false;
+  int PERCENT;
+  int SENSOR;
 
   if (!INIT) {
     for (int i = 0; i < 16; i++) PREVIOUS[i] = -1;
@@ -10,13 +15,15 @@ int readPot(uint8_t sensor) {
 
   }
   
-  int SENSOR = analogRead(sensor);
+  SENSOR = adc.read(sensor);
+  PERCENT = floor((SENSOR / 8183.0) * 100);
 
   if (SENSOR != PREVIOUS[sensor]) {
     DIFF = abs(PREVIOUS[sensor] - SENSOR);
 
-    if (DIFF > 3) {
-      Serial.println((String)sensor + ":" + (String)SENSOR);
+    if (DIFF > 2) {
+      
+      Serial.println((String)sensor + ":" + (String)PERCENT);
       PREVIOUS[sensor] = SENSOR;
       delay(50);
       return 0;

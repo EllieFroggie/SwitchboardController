@@ -11,21 +11,10 @@
 
 using namespace std;
 
-/* OPTIMIZATION LIST (from chatgpt)
-Avoid spawning shell commands (use libpulse).
-Avoid constant string allocations.
-Extract repeated parsing logic.
-Add exception / error handling for malformed serial data.
-Add shutdown handling & timeouts.
-*/
-
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // g++ -std=c++17 -Iinclude src/test_main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_sinks
 
-//void handleSIGINT(int signal) {
-//
-//}
-
+// watch -n 0.5 systemctl --user status InoSwitchboardController.service
 int main(int argc, char *argv[]) {
 
   SerialPort serial("/dev/ttyUSB1", 9600);
@@ -50,6 +39,8 @@ int main(int argc, char *argv[]) {
 
   int spotifyPercent = 40;
   int discordPercent = 120;
+
+  int repeat = 0;
 
   Spotify spot;
   int* sink;
@@ -117,8 +108,7 @@ int main(int argc, char *argv[]) {
         } else knob = -1;
 
         if (!valueString.empty() && std::regex_match(valueString, numRegex)) {
-          value = stoi(valueString);
-          percent = floor((value / 1023.0f) * 100);
+          percent = stoi(valueString);
         } else value = -1;
 
         switch(knob) {
@@ -128,11 +118,6 @@ int main(int argc, char *argv[]) {
           if (switch3 == true) {
             if (sink[0] != -1) {
               percent += 30;
-
-              cout << "Pd: " << discordPercent << endl;
-              cout << "P: " << percent << endl;
-              cout << "M: " << discordPickup << "\n" << endl;
-
 
               if (discordPickup) {
                 if (percent == discordPercent) {
@@ -147,52 +132,43 @@ int main(int argc, char *argv[]) {
               if (percent != discordPercent) {
                 exec(std::string("pactl set-sink-input-volume " + to_string(sink[0]) + " " + to_string(percent) + "%").c_str());
                 discordPercent = percent;
-              }
+                cout << "Discord Change: " << percent << "%" << endl;
+              } else break;
               
               
             } else {
               if (sink[1] != -1) {
 
-                cout << "Ps: " << spotifyPercent << endl;
-                cout << "P: " << percent << endl;
-                cout << "M: " << spotifyPickup << "\n" << endl;
-        
                 if (spotifyPickup) {
                   if (percent == spotifyPercent) {
                     cout << "Spotify Caught!" << endl;
                     spotifyPickup = false;
-                  } else {
-                    break;
-                  }
+                  } else break;
                 }
 
                 if (percent != spotifyPercent) {
                   exec(std::string("pactl set-sink-input-volume " + to_string(sink[1]) + " " + to_string(percent) + "%").c_str());
                   spotifyPercent = percent;
-                }
+                  cout << "Spotify Change: " << percent << "%" << endl;
+                } else break;
 
               }
             }
           } else { // switch3 == false
             if (sink[1] != -1) {
 
-              cout << "Ps: " << spotifyPercent << endl;
-              cout << "P: " << percent << endl;
-              cout << "M: " << spotifyPickup << "\n" << endl;;
-
               if (spotifyPickup) {
                   if (percent == spotifyPercent) {
                     cout << "Spotify Caught!" << endl;
                     spotifyPickup = false;
-                  } else {
-                    break;
-                  }
+                  } else break;
                 }
 
                 if (percent != spotifyPercent) {
                   exec(std::string("pactl set-sink-input-volume " + to_string(sink[1]) + " " + to_string(percent) + "%").c_str());
                   spotifyPercent = percent;
-                }
+                  cout << "Spotify Change: " << percent << "%" << endl;
+                } else break;
               
             }
           }
@@ -200,12 +176,18 @@ int main(int argc, char *argv[]) {
           break;
 
         case 14:
-          exec(std::string("pactl set-sink-volume alsa_output.pci-0000_00_1f.3.analog-stereo " + to_string(percent) + "%").c_str());
+
+          if (percent != repeat) {
+            exec(std::string("pactl set-sink-volume alsa_output.pci-0000_00_1f.3.analog-stereo " + to_string(percent) + "%").c_str());
+            repeat = percent;
+            cout << "Speaker Change: " << percent << "%" << endl;
+          } else break;
           break;
         }
 
       }
     }
+    
 
     // Arduino 2 (Switches)
     if (FD_ISSET(fd2, &readfds)) {
