@@ -33,27 +33,6 @@ std::string remove_quotes(std::string input) {
     return input;
 }
 
-int Spotify::get_sink() {
-    json j;
-    int index = -1;
-
-    try {
-        j = json::parse(std::string(exec("pactl -f json list sink-inputs")));
-    } catch (const std::exception& e) {
-        std::cerr << "JSON parse error: " << e.what() << endl;
-        return -1;
-    }
-
-    for(int i = 0; i < j.size(); i++) {
-
-        if(remove_quotes(j[i].at("properties").at("application.process.binary")) == "spotify" || remove_quotes(j[i].at("properties").at("application.process.binary")) == "spotify_player" ) {
-            index = j[i].at("index");
-        } else index = -1;
-    }
-
-    return index;
-}
-
 int* Spotify::get_all_sinks() {
     json j;
     static int sinks[3] = {-1, -1, -1}; // Priority from 0: Discord, Spotify, Waterfox/youtube 
