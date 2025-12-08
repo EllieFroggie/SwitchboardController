@@ -20,6 +20,7 @@ Add shutdown handling & timeouts.
 */
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
+// g++ -std=c++17 -Iinclude src/test_main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_sinks
 
 //void handleSIGINT(int signal) {
 //
@@ -43,11 +44,19 @@ int main(int argc, char *argv[]) {
   int switchID;
   int switchValue;
 
+  bool spotifyPickup = false;
+  bool discordPickup = false;
+
+  int spotifyPercent = 40;
+  int discordPercent = 120;
+
+  bool switch3;
+
   string speakers = "alsa_output.pci-0000_00_1f.3.analog-stereo ";
   string headphones = "alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line1__sink";
 
   Spotify spot;
-  int sink;
+  int* sink;
 
   std::regex numRegex(R"(^\d+$)");
 
@@ -118,10 +127,79 @@ int main(int argc, char *argv[]) {
 
         switch(knob) {
         case 20:
-          sink = spot.get_sink();
-          if (sink != -1) {
-            exec(std::string("pactl set-sink-input-volume " + to_string(sink) + " " + to_string(percent) + "%").c_str());
-          } else cout << "Spotify Not Detected!" << endl;
+          sink = spot.get_all_sinks();
+
+          if (switch3 == true) {
+            if (sink[0] != -1) {
+              percent += 30;
+
+              cout << "Pd: " << discordPercent << endl;
+              cout << "P: " << percent << endl;
+              cout << "M: " << discordPickup << "\n" << endl;
+
+
+              if (discordPickup) {
+                if (percent == discordPercent) {
+                  cout << "Discord Caught!" << endl;
+                  discordPickup = false;
+                } else {
+                  break;
+                  break;
+                }
+              }
+
+              if (percent != discordPercent) {
+                exec(std::string("pactl set-sink-input-volume " + to_string(sink[0]) + " " + to_string(percent) + "%").c_str());
+                discordPercent = percent;
+              }
+              
+              
+            } else {
+              if (sink[1] != -1) {
+
+                cout << "Ps: " << spotifyPercent << endl;
+                cout << "P: " << percent << endl;
+                cout << "M: " << spotifyPickup << "\n" << endl;
+        
+                if (spotifyPickup) {
+                  if (percent == spotifyPercent) {
+                    cout << "Spotify Caught!" << endl;
+                    spotifyPickup = false;
+                  } else {
+                    break;
+                  }
+                }
+
+                if (percent != spotifyPercent) {
+                  exec(std::string("pactl set-sink-input-volume " + to_string(sink[1]) + " " + to_string(percent) + "%").c_str());
+                  spotifyPercent = percent;
+                }
+
+              }
+            }
+          } else { // switch3 == false
+            if (sink[1] != -1) {
+              cout << "Ps: " << spotifyPercent << endl;
+              cout << "P: " << percent << endl;
+              cout << "M: " << spotifyPickup << "\n" << endl;;
+
+              if (spotifyPickup) {
+                  if (percent == spotifyPercent) {
+                    cout << "Spotify Caught!" << endl;
+                    spotifyPickup = false;
+                  } else {
+                    break;
+                  }
+                }
+
+                if (percent != spotifyPercent) {
+                  exec(std::string("pactl set-sink-input-volume " + to_string(sink[1]) + " " + to_string(percent) + "%").c_str());
+                  spotifyPercent = percent;
+                }
+              
+            }
+          }
+          
           break;
 
         case 14:
@@ -171,9 +249,17 @@ int main(int argc, char *argv[]) {
 
             case 3: 
                 if (switchValue == 1) {
-                    cout << "Switch 3 Unused, exec() to bind" << endl;
+                    cout << "Switch 3 True" << endl;
+                    switch3 = true;
+                    discordPickup = true;
                 } else if (switchValue == 0) {
-                    cout << "Switch 3 Unused, exec() to bind" << endl;
+                    cout << "Switch 3 False" << endl;
+                    switch3 = false;
+                    
+                    if (sink[0] != -1) {
+                      spotifyPickup = true;
+                    }
+
                 }
                 break;
 

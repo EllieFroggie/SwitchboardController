@@ -5,6 +5,7 @@ class Spotify {
 
     public: 
         int get_sink();
+        int* get_all_sinks();
         int get_volume();
         int sink;
 
