@@ -9,9 +9,6 @@
 using namespace std;
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o
-// build/test_SwitchboardController g++ -std=c++17 -Iinclude src/test_main.cpp
-// src/SerialPort.cpp src/spotify.cpp -o build/test_sinks
-
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
 
 int main(int argc, char *argv[]) {
@@ -22,10 +19,10 @@ int main(int argc, char *argv[]) {
   std::string noRepeat = "";
 
   size_t p;
-  string knobString;
-  string valueString;
-  string switchString;
-  string switchValueString;
+  std::string knobString;
+  std::string valueString;
+  std::string switchString;
+  std::string switchValueString;
 
   int knob;
   double percent;
