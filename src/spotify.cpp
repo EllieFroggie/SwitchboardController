@@ -21,7 +21,8 @@ std::string exec(const char* cmd) {
 
     int ret = pclose(pipe);
     if (ret != 0) {
-        std::cerr << "Command exited with code " << ret << "\n";
+        std::cerr << "Command has exited with code " << ret << "\n";
+        throw -1;
     }
     return result;
 }
