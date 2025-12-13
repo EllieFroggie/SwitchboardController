@@ -14,6 +14,6 @@ class Spotify {
 
 };
 
-std::string exec(const char* cmd);
+std::string exec_cmd(const char* cmd);
 
 

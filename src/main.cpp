@@ -4,11 +4,8 @@
 #include <iostream>
 #include <regex>
 #include <string>
-#include <unistd.h>
 
-using namespace std;
-
-// g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o
+// g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
 
 int main(int argc, char *argv[]) {
@@ -95,7 +92,7 @@ int main(int argc, char *argv[]) {
           std::cout << data;
 
           p = data.find(":");
-          if (p == string::npos)
+          if (p == std::string::npos)
             continue;
           knobString = data.substr(0, p);
           valueString = data.substr(p + 1);
@@ -120,19 +117,19 @@ int main(int argc, char *argv[]) {
 
                 if (discordPickup) {
                   if (percent == discordPercent) {
-                    cout << "Discord Caught!" << endl;
+                    std::cout << "Discord Caught!" << std::endl;
                     discordPickup = false;
                   } else
                     break;
                 }
 
                 if (percent != discordPercent) {
-                  exec(std::string("pactl set-sink-input-volume " +
-                                   to_string(sink[0]) + " " +
-                                   to_string(percent) + "%")
+                  exec_cmd(std::string("pactl set-sink-input-volume " +
+                                   std::to_string(sink[0]) + " " +
+                                   std::to_string(percent) + "%")
                            .c_str());
                   discordPercent = percent;
-                  cout << "Discord Change: " << percent << "%" << endl;
+                  std::cout << "Discord Change: " << percent << "%" << std::endl;
                 } else
                   break;
 
@@ -141,7 +138,7 @@ int main(int argc, char *argv[]) {
 
                   if (spotifyPickup) {
                     if (percent == spotifyPercent) {
-                      cout << "Spotify Caught!" << endl;
+                      std::cout << "Spotify Caught!" << std::endl;
                       spotifyPickup = false;
                     } else
                       break;
@@ -149,16 +146,16 @@ int main(int argc, char *argv[]) {
 
                   if (percent != spotifyPercent) {
                     try {
-                      exec(std::string("pactl set-sink-input-volume " +
-                                       to_string(sink[1]) + " " +
-                                       to_string(percent) + "%")
+                      exec_cmd(std::string("pactl set-sink-input-volume " +
+                                       std::to_string(sink[1]) + " " +
+                                       std::to_string(percent) + "%")
                                .c_str());
                     } catch (int e) {
                       sink[1] = -1;
                       break;
                     }
                     spotifyPercent = percent;
-                    cout << "Spotify Change: " << percent << "%" << endl;
+                    std::cout << "Spotify Change: " << percent << "%" << std::endl;
                   } else
                     break;
                 }
@@ -168,7 +165,7 @@ int main(int argc, char *argv[]) {
 
                 if (spotifyPickup) {
                   if (percent == spotifyPercent) {
-                    cout << "Spotify Caught!" << endl;
+                    std::cout << "Spotify Caught!" << std::endl;
                     spotifyPickup = false;
                   } else
                     break;
@@ -177,9 +174,9 @@ int main(int argc, char *argv[]) {
                 if (percent != spotifyPercent) {
 
                   try {
-                    exec(std::string("pactl set-sink-input-volume " +
-                                     to_string(sink[1]) + " " +
-                                     to_string(percent) + "%")
+                    exec_cmd(std::string("pactl set-sink-input-volume " +
+                                     std::to_string(sink[1]) + " " +
+                                     std::to_string(percent) + "%")
                              .c_str());
                   } catch (int e) {
                     sink[1] = -1;
@@ -187,7 +184,7 @@ int main(int argc, char *argv[]) {
                   }
 
                   spotifyPercent = percent;
-                  cout << "Spotify Change: " << percent << "%" << endl;
+                  std::cout << "Spotify Change: " << percent << "%" << std::endl;
                 } else
                   break;
               }
@@ -197,12 +194,12 @@ int main(int argc, char *argv[]) {
           case 14:
 
             if (percent != repeat) {
-              exec(std::string("pactl set-sink-volume "
+              exec_cmd(std::string("pactl set-sink-volume "
                                "alsa_output.pci-0000_00_1f.3.analog-stereo " +
-                               to_string(percent) + "%")
+                               std::to_string(percent) + "%")
                        .c_str());
               repeat = percent;
-              cout << "Speaker Change: " << percent << "%" << endl;
+              std::cout << "Speaker Change: " << percent << "%" << std::endl;
             } else
               break;
             break;
@@ -220,7 +217,7 @@ int main(int argc, char *argv[]) {
           std::cout << data;
 
           p = data.find(":");
-          if (p == string::npos)
+          if (p == std::string::npos)
             continue;
 
           switchString = data.substr(0, p);
@@ -240,11 +237,11 @@ int main(int argc, char *argv[]) {
 
           case 1:
             if (switchValue == 1) {
-              exec(std::string("pactl set-default-sink "
+              exec_cmd(std::string("pactl set-default-sink "
                                "alsa_output.pci-0000_00_1f.3.analog-stereo")
                        .c_str()); // Speakers
             } else if (switchValue == 0) {
-              exec(std::string("pactl set-default-sink "
+              exec_cmd(std::string("pactl set-default-sink "
                                "alsa_output.usb-Focusrite_Scarlett_Solo_USB_"
                                "Y76QPCX21354BF-00.HiFi__Line1__sink")
                        .c_str()); // Headphones
@@ -253,19 +250,19 @@ int main(int argc, char *argv[]) {
 
           case 2:
             if (switchValue == 1) {
-              exec("amixer set Capture nocap");
+              exec_cmd("amixer set Capture nocap");
             } else if (switchValue == 0) {
-              exec("amixer set Capture cap");
+              exec_cmd("amixer set Capture cap");
             }
             break;
 
           case 3:
             if (switchValue == 1) {
-              cout << "Switch 3 True" << endl;
+              std::cout << "Switch 3 True" << std::endl;
               switch3 = true;
               discordPickup = true;
             } else if (switchValue == 0) {
-              cout << "Switch 3 False" << endl;
+              std::cout << "Switch 3 False" << std::endl;
               switch3 = false;
 
               if (sink[0] != -1) {
