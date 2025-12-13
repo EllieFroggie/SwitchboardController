@@ -1,5 +1,6 @@
 #include "SerialPort.h"
 #include "Spotify.h"
+#include <cctype>
 #include <cstring>
 #include <iostream>
 #include <regex>
@@ -7,6 +8,11 @@
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
+
+bool isNum(const std::string& str) {
+  return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
+}
+
 
 int main(int argc, char *argv[]) {
 
@@ -20,6 +26,9 @@ int main(int argc, char *argv[]) {
   std::string valueString;
   std::string switchString;
   std::string switchValueString;
+
+  const int KNOB_SPEAKER_ID = 14;
+  const int KNOB_SPOTIFY_ID = 20; 
 
   int knob;
   double percent;
@@ -36,27 +45,27 @@ int main(int argc, char *argv[]) {
   int repeat = 0;
 
   Spotify spot;
-  int *sink;
+  std::array<int, 3> sink = {-1, -1, -1};
 
   std::regex numRegex(R"(^\d+$)");
 
   if (!serial.openPort()) {
-    std::cerr << "Failed to open port.\n";
+    std::cerr << "Failed to open port " << serial.getDevice() << std::endl;
     return 1;
   }
 
   if (!serial.configurePort()) {
-    std::cerr << "Failed to configure port.\n";
+    std::cerr << "Failed to configure port " << serial.getDevice() << std::endl;
     return 1;
   }
 
   if (!serial2.openPort()) {
-    std::cerr << "Failed to open port.\n";
+    std::cerr << "Failed to open port " << serial2.getDevice() << std::endl;
     return 1;
   }
 
   if (!serial2.configurePort()) {
-    std::cerr << "Failed to configure port.\n";
+    std::cerr << "Failed to configure port " << serial2.getDevice() << std::endl;
     return 1;
   }
 
@@ -89,26 +98,26 @@ int main(int argc, char *argv[]) {
       data = serial.readData();
       if (!data.empty()) {
         if (data != noRepeat) {
+          
           std::cout << data;
-
           p = data.find(":");
-          if (p == std::string::npos)
-            continue;
+          if (p == std::string::npos) continue;
+            
           knobString = data.substr(0, p);
           valueString = data.substr(p + 1);
           valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
 
-          if (!knobString.empty()) {
+          if (!knobString.empty() && isNum(knobString)) {
             knob = stoi(knobString);
           } else
             knob = -1;
 
-          if (!valueString.empty() && std::regex_match(valueString, numRegex)) {
+          if (!valueString.empty() && isNum(valueString)) {
             percent = stoi(valueString);
           }
 
           switch (knob) {
-          case 20:
+          case KNOB_SPOTIFY_ID:
             sink = spot.get_all_sinks();
 
             if (switch3 == true) {
@@ -191,7 +200,7 @@ int main(int argc, char *argv[]) {
             }
             break;
 
-          case 14:
+          case KNOB_SPEAKER_ID:
 
             if (percent != repeat) {
               exec_cmd(std::string("pactl set-sink-volume "
@@ -214,11 +223,10 @@ int main(int argc, char *argv[]) {
       data = serial2.readData();
       if (!data.empty()) {
         if (data != noRepeat) {
+          
           std::cout << data;
-
           p = data.find(":");
-          if (p == std::string::npos)
-            continue;
+          if (p == std::string::npos) continue;
 
           switchString = data.substr(0, p);
           switchValueString = data.substr(p + 1);
@@ -259,6 +267,7 @@ int main(int argc, char *argv[]) {
           case 3:
             if (switchValue == 1) {
               std::cout << "Switch 3 True" << std::endl;
+              std::cout << sink[0] << std::endl;
               switch3 = true;
               discordPickup = true;
             } else if (switchValue == 0) {

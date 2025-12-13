@@ -1,6 +1,5 @@
 #include "Spotify.h"
 #include  <iostream>
-#include <fstream>
 #include <algorithm>
 #include <nlohmann/json.hpp>
 
@@ -34,9 +33,9 @@ std::string remove_quotes(std::string input) {
     return input;
 }
 
-int* Spotify::get_all_sinks() {
+std::array<int, 3> Spotify::get_all_sinks() {
     json j;
-    static int sinks[3] = {-1, -1, -1}; // Priority from 0: Discord, Spotify, Waterfox/youtube 
+    std::array<int, 3> sinks = {-1, -1, -1}; // Priority from 0: Discord, Spotify, Waterfox/youtube 
     string mediaName;
 
     try {

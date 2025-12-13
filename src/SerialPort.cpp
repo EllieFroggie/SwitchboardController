@@ -18,6 +18,10 @@ int SerialPort::getFD() {
     return this->fd; 
 }
 
+std::string SerialPort::getDevice() {
+  return this->device;
+}
+
 bool SerialPort::openPort() {
     fd = open(device.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
     if (fd < 0) {

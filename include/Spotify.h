@@ -1,10 +1,11 @@
 #pragma once
 #include <string>
+#include <array>
 
 class Spotify {
 
     public: 
-        int* get_all_sinks();
+        std::array<int, 3> get_all_sinks();
         int get_volume();
         int sink;
 
