@@ -13,13 +13,11 @@ bool isNum(const std::string& str) {
   return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
 }
 
-
 int main(int argc, char *argv[]) {
 
   SerialPort serial("/dev/ttyUSB1", 9600);
   SerialPort serial2("/dev/ttyUSB0", 9600);
   std::string data;
-  std::string noRepeat = "";
 
   size_t p;
   std::string knobString;
@@ -27,27 +25,30 @@ int main(int argc, char *argv[]) {
   std::string switchString;
   std::string switchValueString;
 
-  const int KNOB_SPEAKER_ID = 14;
-  const int KNOB_SPOTIFY_ID = 20; 
-
   int knob;
   double percent;
   int switchID;
   int switchValue;
 
-  bool switch3 = false;
+  const int KNOB_SPEAKER_ID = 14;
+  const int KNOB_SPOTIFY_ID = 20; 
+
+  bool switch_one = false;
+  bool switch_two = false;
+  bool switch_three = false;
+
   bool spotifyPickup = false;
   bool discordPickup = false;
 
   int spotifyPercent = 40;
   int discordPercent = 120;
 
-  int repeat = 0;
+  int noPercentRepeat = 0;
+  std::string noDataRepeat = "";
 
   Spotify spot;
   std::array<int, 3> sink = {-1, -1, -1};
 
-  std::regex numRegex(R"(^\d+$)");
 
   if (!serial.openPort()) {
     std::cerr << "Failed to open port " << serial.getDevice() << std::endl;
@@ -77,7 +78,7 @@ int main(int argc, char *argv[]) {
 
   fd_set readfds;
 
-  std::cout << "Connected! Waiting for data...\n";
+  std::cout << "Boards Detected! Waiting for data...\n";
 
   while (true) {
 
@@ -97,7 +98,7 @@ int main(int argc, char *argv[]) {
     if (FD_ISSET(fd1, &readfds)) {
       data = serial.readData();
       if (!data.empty()) {
-        if (data != noRepeat) {
+        if (data != noDataRepeat) {
           
           std::cout << data;
           p = data.find(":");
@@ -118,9 +119,9 @@ int main(int argc, char *argv[]) {
 
           switch (knob) {
           case KNOB_SPOTIFY_ID:
-            sink = spot.get_all_sinks();
+            spot.get_all_sinks(sink);
 
-            if (switch3 == true) {
+            if (switch_three == true) {
               if (sink[0] != -1) {
                 percent += 30;
 
@@ -202,18 +203,18 @@ int main(int argc, char *argv[]) {
 
           case KNOB_SPEAKER_ID:
 
-            if (percent != repeat) {
+            if (percent != noPercentRepeat) {
               exec_cmd(std::string("pactl set-sink-volume "
                                "alsa_output.pci-0000_00_1f.3.analog-stereo " +
                                std::to_string(percent) + "%")
                        .c_str());
-              repeat = percent;
+              noPercentRepeat = percent;
               std::cout << "Speaker Change: " << percent << "%" << std::endl;
             } else
               break;
             break;
           }
-          noRepeat = data;
+          noDataRepeat = data;
         }
       }
     }
@@ -222,7 +223,7 @@ int main(int argc, char *argv[]) {
     if (FD_ISSET(fd2, &readfds)) {
       data = serial2.readData();
       if (!data.empty()) {
-        if (data != noRepeat) {
+        if (data != noDataRepeat) {
           
           std::cout << data;
           p = data.find(":");
@@ -246,41 +247,43 @@ int main(int argc, char *argv[]) {
           case 1:
             if (switchValue == 1) {
               exec_cmd(std::string("pactl set-default-sink "
-                               "alsa_output.pci-0000_00_1f.3.analog-stereo")
-                       .c_str()); // Speakers
+                               "alsa_output.pci-0000_00_1f.3.analog-stereo").c_str()); // Speakers
+              switch_one = true;
             } else if (switchValue == 0) {
               exec_cmd(std::string("pactl set-default-sink "
                                "alsa_output.usb-Focusrite_Scarlett_Solo_USB_"
-                               "Y76QPCX21354BF-00.HiFi__Line1__sink")
-                       .c_str()); // Headphones
+                               "Y76QPCX21354BF-00.HiFi__Line1__sink").c_str()); // Headphones
+              switch_one = false;
             }
             break;
 
           case 2:
             if (switchValue == 1) {
               exec_cmd("amixer set Capture nocap");
+              switch_two = true;
             } else if (switchValue == 0) {
               exec_cmd("amixer set Capture cap");
+              switch_two = false;
             }
             break;
 
           case 3:
             if (switchValue == 1) {
               std::cout << "Switch 3 True" << std::endl;
-              std::cout << sink[0] << std::endl;
-              switch3 = true;
+              switch_three = true;
               discordPickup = true;
             } else if (switchValue == 0) {
               std::cout << "Switch 3 False" << std::endl;
-              switch3 = false;
+              switch_three = false;
 
               if (sink[0] != -1) {
                 spotifyPickup = true;
               }
             }
             break;
+
           }
-          noRepeat = data;
+          if (noDataRepeat != data) noDataRepeat = data;
         }
       }
     }

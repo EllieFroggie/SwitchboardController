@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <nlohmann/json.hpp>
 
-using namespace std;
 using json = nlohmann::json;
 
 // super not safe but will have to do for now
@@ -33,17 +32,17 @@ std::string remove_quotes(std::string input) {
     return input;
 }
 
-std::array<int, 3> Spotify::get_all_sinks() {
+void Spotify::get_all_sinks(std::array<int, 3>& sinks) {
     json j;
-    std::array<int, 3> sinks = {-1, -1, -1}; // Priority from 0: Discord, Spotify, Waterfox/youtube 
-    string mediaName;
+    std::string mediaName;
 
     try {
         j = json::parse(std::string(exec_cmd("pactl -f json list sink-inputs")));
     } catch (const std::exception& e) {
-        std::cerr << "JSON parse error: " << e.what() << endl;
-        return sinks;
+        std::cerr << "JSON parse error: " << e.what() << std::endl;
+        return;
     }
+
 
     for(int i = 0; i < j.size(); i++) {
         mediaName = j[i].at("properties").at("media.name");  
@@ -63,8 +62,7 @@ std::array<int, 3> Spotify::get_all_sinks() {
         }
 
     }
-
-    return sinks;
+    return;
 }
 
 
