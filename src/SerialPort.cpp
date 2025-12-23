@@ -23,7 +23,7 @@ std::string SerialPort::getDevice() {
 }
 
 bool SerialPort::openPort() {
-    fd = open(device.c_str(), O_RDWR | O_NOCTTY | O_NDELAY);
+    fd = open(device.c_str(), O_RDWR | O_NOCTTY);
     if (fd < 0) {
         std::cerr << "Error opening " << device << ": " 
                   << strerror(errno) << "\n";

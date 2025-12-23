@@ -4,10 +4,33 @@
 #include <cstring>
 #include <iostream>
 #include <regex>
+#include <stdexcept>
 #include <string>
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
+
+void change_sink_volume(int readPercent, int &knobPercent, int &sinkId, std::array<int, 3>& sinks) {
+  try {
+    exec_cmd(std::string("pactl set-sink-input-volume " +
+                         std::to_string(sinkId) + " " +
+                         std::to_string(readPercent) + "%")
+                 .c_str());
+    knobPercent = readPercent;
+    return;
+  } catch (const std::runtime_error &e) {
+    sinkId = -1;
+  }
+}
+
+void change_speaker_volume(int readPercent, int &knobPercent, std::string device) {
+  try {
+    exec_cmd(std::string("pactl set-sink-volume " + device + " " + std::to_string(readPercent) + "%").c_str());
+    knobPercent = readPercent;
+  } catch(const std::runtime_error& e) {
+    std::cout << "Failed to set speaker volume with error: " << e.what() << std::endl;
+  }
+}
 
 bool isNum(const std::string& str) {
   return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
@@ -26,7 +49,7 @@ int main(int argc, char *argv[]) {
   std::string switchValueString;
 
   int knob;
-  double percent;
+  int percent;
   int switchID;
   int switchValue;
 
@@ -42,13 +65,13 @@ int main(int argc, char *argv[]) {
 
   int spotifyPercent = 40;
   int discordPercent = 120;
+  int speakerPercent = 100;
 
-  int noPercentRepeat = 0;
-  std::string noDataRepeat = "";
+  std::array<int, 3> sink = {-1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube
 
-  Spotify spot;
-  std::array<int, 3> sink = {-1, -1, -1};
-
+  int &DISCORD_SINK = sink[0];
+  int &SPOTIFY_SINK = sink[1];
+  int &YOUTUBE_SINK = sink[2];
 
   if (!serial.openPort()) {
     std::cerr << "Failed to open port " << serial.getDevice() << std::endl;
@@ -78,7 +101,7 @@ int main(int argc, char *argv[]) {
 
   fd_set readfds;
 
-  std::cout << "Boards Detected! Waiting for data...\n";
+  std::cout << "Boards Detected, Setup Complete! Waiting for data...\n";
 
   while (true) {
 
@@ -96,11 +119,12 @@ int main(int argc, char *argv[]) {
 
     // Arduino 1 (Knobs)
     if (FD_ISSET(fd1, &readfds)) {
-      data = serial.readData();
+      data = serial.readLine();
+
+      std::cout << data << std::endl;
+
       if (!data.empty()) {
-        if (data != noDataRepeat) {
-          
-          std::cout << data;
+
           p = data.find(":");
           if (p == std::string::npos) continue;
             
@@ -117,13 +141,14 @@ int main(int argc, char *argv[]) {
             percent = stoi(valueString);
           }
 
+          Spotify::get_all_sinks(sink);
+
           switch (knob) {
           case KNOB_SPOTIFY_ID:
-            spot.get_all_sinks(sink);
-
+          
             if (switch_three == true) {
-              if (sink[0] != -1) {
-                percent += 30;
+              if (DISCORD_SINK != -1) {
+                percent += 30; // Volume boost because everyone in discord has trash mics
 
                 if (discordPickup) {
                   if (percent == discordPercent) {
@@ -134,17 +159,15 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (percent != discordPercent) {
-                  exec_cmd(std::string("pactl set-sink-input-volume " +
-                                   std::to_string(sink[0]) + " " +
-                                   std::to_string(percent) + "%")
-                           .c_str());
-                  discordPercent = percent;
+
+                  change_sink_volume(percent, discordPercent, DISCORD_SINK, sink);
                   std::cout << "Discord Change: " << percent << "%" << std::endl;
+                  
                 } else
                   break;
 
               } else {
-                if (sink[1] != -1) {
+                if (SPOTIFY_SINK != -1) {
 
                   if (spotifyPickup) {
                     if (percent == spotifyPercent) {
@@ -155,23 +178,16 @@ int main(int argc, char *argv[]) {
                   }
 
                   if (percent != spotifyPercent) {
-                    try {
-                      exec_cmd(std::string("pactl set-sink-input-volume " +
-                                       std::to_string(sink[1]) + " " +
-                                       std::to_string(percent) + "%")
-                               .c_str());
-                    } catch (int e) {
-                      sink[1] = -1;
-                      break;
-                    }
-                    spotifyPercent = percent;
+ 
+                    change_sink_volume(percent, spotifyPercent, SPOTIFY_SINK, sink);
                     std::cout << "Spotify Change: " << percent << "%" << std::endl;
+
                   } else
                     break;
                 }
               }
             } else { // switch3 == false
-              if (sink[1] != -1) {
+              if (SPOTIFY_SINK != -1) {
 
                 if (spotifyPickup) {
                   if (percent == spotifyPercent) {
@@ -183,18 +199,9 @@ int main(int argc, char *argv[]) {
 
                 if (percent != spotifyPercent) {
 
-                  try {
-                    exec_cmd(std::string("pactl set-sink-input-volume " +
-                                     std::to_string(sink[1]) + " " +
-                                     std::to_string(percent) + "%")
-                             .c_str());
-                  } catch (int e) {
-                    sink[1] = -1;
-                    break;
-                  }
-
-                  spotifyPercent = percent;
+                  change_sink_volume(percent, spotifyPercent, SPOTIFY_SINK, sink);
                   std::cout << "Spotify Change: " << percent << "%" << std::endl;
+
                 } else
                   break;
               }
@@ -203,29 +210,26 @@ int main(int argc, char *argv[]) {
 
           case KNOB_SPEAKER_ID:
 
-            if (percent != noPercentRepeat) {
-              exec_cmd(std::string("pactl set-sink-volume "
-                               "alsa_output.pci-0000_00_1f.3.analog-stereo " +
-                               std::to_string(percent) + "%")
-                       .c_str());
-              noPercentRepeat = percent;
+            if (percent != speakerPercent) {
+              
+              change_speaker_volume(percent, speakerPercent, "alsa_output.pci-0000_00_1f.3.analog-stereo");
+
               std::cout << "Speaker Change: " << percent << "%" << std::endl;
             } else
               break;
             break;
           }
-          noDataRepeat = data;
-        }
+        
       }
     }
 
     // Arduino 2 (Switches)
     if (FD_ISSET(fd2, &readfds)) {
-      data = serial2.readData();
+      data = serial2.readLine();
       if (!data.empty()) {
-        if (data != noDataRepeat) {
           
-          std::cout << data;
+          std::cout << data << std::endl;
+          
           p = data.find(":");
           if (p == std::string::npos) continue;
 
@@ -276,15 +280,14 @@ int main(int argc, char *argv[]) {
               std::cout << "Switch 3 False" << std::endl;
               switch_three = false;
 
-              if (sink[0] != -1) {
+              if (DISCORD_SINK != -1) {
                 spotifyPickup = true;
               }
             }
             break;
 
           }
-          if (noDataRepeat != data) noDataRepeat = data;
-        }
+        
       }
     }
   }

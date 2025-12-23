@@ -1,7 +1,8 @@
 #include "Spotify.h"
-#include  <iostream>
+#include <iostream>
 #include <algorithm>
 #include <nlohmann/json.hpp>
+#include <stdexcept>
 
 using json = nlohmann::json;
 
@@ -20,7 +21,7 @@ std::string exec_cmd(const char* cmd) {
     int ret = pclose(pipe);
     if (ret != 0) {
         std::cerr << "Command has exited with code " << ret << "\n";
-        throw -1;
+        throw std::runtime_error("Command Failed");
     }
     return result;
 }
@@ -31,6 +32,7 @@ std::string remove_quotes(std::string input) {
     input.erase(std::remove(input.begin(), input.end(), '\''), input.end());
     return input;
 }
+
 
 void Spotify::get_all_sinks(std::array<int, 3>& sinks) {
     json j;

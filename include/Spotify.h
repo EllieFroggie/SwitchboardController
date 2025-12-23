@@ -5,7 +5,7 @@
 class Spotify {
 
     public: 
-        void get_all_sinks(std::array<int, 3>& sinks);
+        static void get_all_sinks(std::array<int, 3>& sinks);
         int get_volume();
         int sink;
 
