@@ -66,6 +66,3 @@ void Spotify::get_all_sinks(std::array<int, 3>& sinks) {
     }
     return;
 }
-
-
-

@@ -6,6 +6,7 @@
 #include <regex>
 #include <stdexcept>
 #include <string>
+#include <chrono>
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
@@ -68,6 +69,7 @@ int main(int argc, char *argv[]) {
   int speakerPercent = 100;
 
   std::array<int, 3> sink = {-1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube
+  static auto refreshTimer = std::chrono::steady_clock::now();
 
   int &DISCORD_SINK = sink[0];
   int &SPOTIFY_SINK = sink[1];
@@ -121,7 +123,7 @@ int main(int argc, char *argv[]) {
     if (FD_ISSET(fd1, &readfds)) {
       data = serial.readLine();
 
-      std::cout << data << std::endl;
+      //std::cout << data << std::endl;
 
       if (!data.empty()) {
 
@@ -140,8 +142,6 @@ int main(int argc, char *argv[]) {
           if (!valueString.empty() && isNum(valueString)) {
             percent = stoi(valueString);
           }
-
-          Spotify::get_all_sinks(sink);
 
           switch (knob) {
           case KNOB_SPOTIFY_ID:
@@ -228,7 +228,7 @@ int main(int argc, char *argv[]) {
       data = serial2.readLine();
       if (!data.empty()) {
           
-          std::cout << data << std::endl;
+          //std::cout << data << std::endl;
           
           p = data.find(":");
           if (p == std::string::npos) continue;
@@ -289,6 +289,11 @@ int main(int argc, char *argv[]) {
           }
         
       }
+    }
+
+    if (std::chrono::steady_clock::now() - refreshTimer > std::chrono::seconds(2)) {
+      Spotify::get_all_sinks(sink);
+      refreshTimer = std::chrono::steady_clock::now();
     }
   }
 

@@ -93,38 +93,17 @@ std::string SerialPort::readData() {
     return "";
 }
 
-
+// changed to non-blocking because select is called in main
 std::string SerialPort::readLine() {
-    std::string result;
+    std::string data;
     char ch;
 
-    while (true) {
-        // Wait for data to be available
-        fd_set readset;
-        FD_ZERO(&readset);
-        FD_SET(fd, &readset);
-
-        int res = select(fd + 1, &readset, NULL, NULL, NULL);
-        if (res < 0) {
-            std::cerr << "select() error: " << strerror(errno) << "\n";
-            return "";
-        }
-
-        if (FD_ISSET(fd, &readset)) {
-            int n = read(fd, &ch, 1);
-            if (n > 0) {
-                if (ch == '\n') break;  // End of line
-                result += ch;
-            } else if (n < 0) {
-                std::cerr << "read() error: " << strerror(errno) << "\n";
-                return "";
-            }
-        }
+    while (read(fd, &ch, 1) > 0) {
+        if (ch == '\n') break;
+       data += ch;
     }
-
-    return result;
+    return data;
 }
-
 
 void SerialPort::closePort() {
     if (fd >= 0) {
