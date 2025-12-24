@@ -81,18 +81,6 @@ bool SerialPort::configurePort() {
     return true;
 }
 
-std::string SerialPort::readData() {
-    char buf[256];
-    int n = read(fd, buf, sizeof(buf) - 1);
-    if (n > 0) {
-        buf[n] = '\0';
-        return std::string(buf);
-    }
-    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
-        return "";
-    return "";
-}
-
 // changed to non-blocking because select is called in main
 std::string SerialPort::readLine() {
     std::string data;

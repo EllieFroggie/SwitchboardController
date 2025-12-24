@@ -12,7 +12,6 @@ public:
     bool configurePort();
     int getFD();
     std::string getDevice();
-    std::string readData();
     std::string readLine();
     bool serialDataAvailable();
     void closePort();
