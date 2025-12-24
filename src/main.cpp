@@ -1,36 +1,115 @@
 #include "SerialPort.h"
 #include "Spotify.h"
+#include <atomic>
 #include <cctype>
+#include <condition_variable>
 #include <cstring>
 #include <iostream>
 #include <regex>
 #include <stdexcept>
 #include <string>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
 
 // g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
 
-void change_sink_volume(int readPercent, int &knobPercent, int &sinkId, std::array<int, 3>& sinks) {
-  try {
-    exec_cmd(std::string("pactl set-sink-input-volume " +
-                         std::to_string(sinkId) + " " +
-                         std::to_string(readPercent) + "%")
-                 .c_str());
-    knobPercent = readPercent;
-    return;
-  } catch (const std::runtime_error &e) {
-    sinkId = -1;
+const int KNOB_SPEAKER_ID = 14;
+const int KNOB_SPOTIFY_ID = 20;
+
+std::atomic<int> spotifyTarget(35);
+std::atomic<int> discordTarget = 120;
+std::atomic<int> speakerTarget = 100;
+
+std::atomic<int> spotifyPercent(40);
+std::atomic<int> discordPercent = 120;
+std::atomic<int> speakerPercent = 100;
+
+std::array<int, 3> sink = {-1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube
+
+int &DISCORD_SINK = sink[0];
+int &SPOTIFY_SINK = sink[1];
+int &YOUTUBE_SINK = sink[2];
+
+std::mutex workerMutex;
+std::condition_variable workerCv;
+std::atomic<bool> workPending = false;
+
+void change_sink_volume(int readPercent, std::atomic<int> &knobPercent, int &sinkId, std::array<int, 3> &sinks) {
+  if (sinkId != -1) {
+    try {
+      exec_cmd(std::string("pactl set-sink-input-volume " +
+                           std::to_string(sinkId) + " " +
+                           std::to_string(readPercent) + "%")
+                   .c_str());
+      knobPercent.store(readPercent);
+      return;
+    } catch (const std::runtime_error &e) {
+      std::cout << "Failed to set sink volume with error " << e.what() << std::endl;
+      sinkId = -1;
+    }
   }
 }
 
-void change_speaker_volume(int readPercent, int &knobPercent, std::string device) {
+void change_speaker_volume(int readPercent, std::atomic<int> &knobPercent, std::string device) {
   try {
     exec_cmd(std::string("pactl set-sink-volume " + device + " " + std::to_string(readPercent) + "%").c_str());
-    knobPercent = readPercent;
+    knobPercent.store(readPercent);
   } catch(const std::runtime_error& e) {
     std::cout << "Failed to set speaker volume with error: " << e.what() << std::endl;
   }
+}
+
+void async_worker() {
+  std::unique_lock<std::mutex> lock(workerMutex);
+
+  int _discordTarget;
+  int _spotifyTarget;
+  int _speakerTarget;
+
+  int _discordPercent;
+  int _spotifyPercent;
+  int _speakerPercent;
+
+  while (true) {
+    
+    workerCv.wait(lock, [] { return workPending.load(); });
+    workPending = false;
+
+    lock.unlock();
+
+    _discordTarget = discordTarget.load();
+    _spotifyTarget = spotifyTarget.load();
+    _speakerTarget = speakerTarget.load();
+
+    _discordPercent = discordPercent.load();
+    _spotifyPercent = spotifyPercent.load();
+    _speakerPercent = speakerPercent.load();
+
+    if (_discordTarget != _discordPercent) {
+      change_sink_volume(_discordTarget, discordPercent, DISCORD_SINK, sink);
+    }
+
+    if (_spotifyTarget != _spotifyPercent) {
+      change_sink_volume(_spotifyTarget, spotifyPercent, SPOTIFY_SINK, sink);
+    }
+
+    if (_speakerTarget != _speakerPercent) {
+      change_speaker_volume(_speakerTarget, speakerPercent, "alsa_output.pci-0000_00_1f.3.analog-stereo");
+    }
+
+    lock.lock();
+  }
+}
+
+inline void notify_worker() {
+  {
+    std::lock_guard<std::mutex> lock(workerMutex);
+    workPending = true;
+  }
+  workerCv.notify_one();
 }
 
 bool isNum(const std::string& str) {
@@ -54,9 +133,6 @@ int main(int argc, char *argv[]) {
   int switchID;
   int switchValue;
 
-  const int KNOB_SPEAKER_ID = 14;
-  const int KNOB_SPOTIFY_ID = 20; 
-
   bool switch_one = false;
   bool switch_two = false;
   bool switch_three = false;
@@ -64,16 +140,8 @@ int main(int argc, char *argv[]) {
   bool spotifyPickup = false;
   bool discordPickup = false;
 
-  int spotifyPercent = 40;
-  int discordPercent = 120;
-  int speakerPercent = 100;
-
-  std::array<int, 3> sink = {-1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube
+  
   static auto refreshTimer = std::chrono::steady_clock::now();
-
-  int &DISCORD_SINK = sink[0];
-  int &SPOTIFY_SINK = sink[1];
-  int &YOUTUBE_SINK = sink[2];
 
   if (!serial.openPort()) {
     std::cerr << "Failed to open port " << serial.getDevice() << std::endl;
@@ -103,7 +171,10 @@ int main(int argc, char *argv[]) {
 
   fd_set readfds;
 
-  std::cout << "Boards Detected, Setup Complete! Waiting for data...\n";
+
+  std::thread t(async_worker);
+
+  std::cout << "Boards Detected, Worker Thread Started, Initialization Complete! Waiting for data...\n";
 
   while (true) {
 
@@ -160,8 +231,9 @@ int main(int argc, char *argv[]) {
 
                 if (percent != discordPercent) {
 
-                  change_sink_volume(percent, discordPercent, DISCORD_SINK, sink);
-                  std::cout << "Discord Change: " << percent << "%" << std::endl;
+                  discordTarget = percent;
+                  notify_worker();
+                  //std::cout << "Discord Change: " << percent << "%" << std::endl;
                   
                 } else
                   break;
@@ -179,8 +251,10 @@ int main(int argc, char *argv[]) {
 
                   if (percent != spotifyPercent) {
  
-                    change_sink_volume(percent, spotifyPercent, SPOTIFY_SINK, sink);
-                    std::cout << "Spotify Change: " << percent << "%" << std::endl;
+                    
+                    spotifyTarget = percent;
+                    notify_worker();
+                    //std::cout << "Spotify Change: " << percent << "%" << std::endl;
 
                   } else
                     break;
@@ -198,9 +272,10 @@ int main(int argc, char *argv[]) {
                 }
 
                 if (percent != spotifyPercent) {
-
-                  change_sink_volume(percent, spotifyPercent, SPOTIFY_SINK, sink);
-                  std::cout << "Spotify Change: " << percent << "%" << std::endl;
+                  
+                  spotifyTarget = percent;
+                  notify_worker();
+                  //std::cout << "Spotify Change: " << percent << "%" << std::endl;
 
                 } else
                   break;
@@ -212,9 +287,10 @@ int main(int argc, char *argv[]) {
 
             if (percent != speakerPercent) {
               
-              change_speaker_volume(percent, speakerPercent, "alsa_output.pci-0000_00_1f.3.analog-stereo");
+              speakerTarget = percent;
+              notify_worker();
+              //std::cout << "Speaker Change: " << percent << "%" << std::endl;
 
-              std::cout << "Speaker Change: " << percent << "%" << std::endl;
             } else
               break;
             break;
