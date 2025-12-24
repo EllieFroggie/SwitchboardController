@@ -1,32 +1,23 @@
 #include <Oversampling.h>
 
 Oversampling adc(10, 13, 1);
+int SENSORS[] = {A0, A6};
 
-int readPot(uint8_t sensor) {
-  static int PREVIOUS[16];
-  static double DIFF = -1;
+unsigned long UPDATE[16] = {0};
+const unsigned long INTERVAL = 50;
+
+void readPot(uint8_t sensor) {
+  static int PREVIOUS[16] = {-1};
   static bool INIT = false;
-  int PERCENT;
-  int SENSOR;
-
-  if (!INIT) {
-    for (int i = 0; i < 16; i++) PREVIOUS[i] = -1;
-    INIT = true;
-
-  }
+  int SENSOR = adc.read(sensor);
+  int PERCENT = round((SENSOR / 8183.0) * 100);
   
-  SENSOR = adc.read(sensor);
-  PERCENT = floor((SENSOR / 8183.0) * 100);
+  if (PERCENT != PREVIOUS[sensor]) {
 
-  if (SENSOR != PREVIOUS[sensor]) {
-    DIFF = abs(PREVIOUS[sensor] - SENSOR);
-
-    if (DIFF > 2) {
+    if (abs(PERCENT - PREVIOUS[sensor]) >= 1) {
       
       Serial.println((String)sensor + ":" + (String)PERCENT);
-      PREVIOUS[sensor] = SENSOR;
-      delay(50);
-      return 0;
+      PREVIOUS[sensor] = PERCENT;
     }
   }
 }
@@ -38,13 +29,13 @@ void setup() {
 }
 
 void loop() {
-
-  if (readPot(A0)) {
-    delay(50);
+  
+  for (int i = 0; i < 2; i++) {
+    int s = SENSORS[i];
+    if (millis() - UPDATE[s] >= INTERVAL) {
+      readPot(s);
+      UPDATE[s] = millis();
+    }
   }
-  if (readPot(A6)) {
-    delay(50);
-  }
-
 
 }
