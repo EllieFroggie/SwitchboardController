@@ -19,25 +19,63 @@
 const int KNOB_SPEAKER_ID = 14;
 const int KNOB_SPOTIFY_ID = 20;
 
-std::atomic<int> spotifyTarget(35);
-std::atomic<int> discordTarget = 120;
-std::atomic<int> speakerTarget = 100;
-
-std::atomic<int> spotifyPercent(40);
-std::atomic<int> discordPercent = 120;
-std::atomic<int> speakerPercent = 100;
-
-std::array<int, 3> sink = {-1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube
+std::array<int, 4> sink = {-1, -1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube, 3 VLC
 
 int &DISCORD_SINK = sink[0];
 int &SPOTIFY_SINK = sink[1];
 int &YOUTUBE_SINK = sink[2];
+int &VLC_SINK = sink[3];
+
+enum class VolumeType {
+  Sink,
+  Speaker
+};
+
+struct VolumeState {
+  std::atomic<int> target;
+  std::atomic<int> current;
+};
+
+struct VolumeChannel {
+  VolumeType type;
+  VolumeState volume;
+
+  int* sinkID = nullptr;
+  std::string speaker;
+};
+
+
+VolumeChannel discord {
+  VolumeType::Sink,
+  {120, 120},
+  &DISCORD_SINK
+};
+
+VolumeChannel spotify {
+  VolumeType::Sink,
+  {40, 40},
+  &SPOTIFY_SINK
+};
+
+VolumeChannel vlc {
+  VolumeType::Sink,
+  {45, 45},
+  &VLC_SINK
+};
+
+VolumeChannel speaker {
+  VolumeType::Speaker,
+  {100, 100},
+  nullptr,
+  "alsa_output.pci-0000_00_1f.3.analog-stereo"
+};
 
 std::mutex workerMutex;
 std::condition_variable workerCv;
 std::atomic<bool> workPending = false;
 
-void change_sink_volume(int readPercent, std::atomic<int> &knobPercent, int &sinkId, std::array<int, 3> &sinks) {
+
+void change_sink_volume(int readPercent, std::atomic<int> &knobPercent, int &sinkId, std::array<int, 4> &sinks) {
   if (sinkId != -1) {
     try {
       exec_cmd(std::string("pactl set-sink-input-volume " +
@@ -62,16 +100,21 @@ void change_speaker_volume(int readPercent, std::atomic<int> &knobPercent, std::
   }
 }
 
+void apply_volume(VolumeChannel& ch) {
+  int target = ch.volume.target.load();
+  int current = ch.volume.current.load();
+
+  if (target == current) return;
+
+  if (ch.type == VolumeType::Sink && ch.sinkID && *ch.sinkID != -1) {
+    change_sink_volume(target, ch.volume.current, *ch.sinkID, sink);
+  } else if (ch.type == VolumeType::Speaker) {
+    change_speaker_volume(target, ch.volume.current, ch.speaker);
+  }
+}
+
 void async_worker() {
   std::unique_lock<std::mutex> lock(workerMutex);
-
-  int _discordTarget;
-  int _spotifyTarget;
-  int _speakerTarget;
-
-  int _discordPercent;
-  int _spotifyPercent;
-  int _speakerPercent;
 
   while (true) {
     
@@ -80,25 +123,10 @@ void async_worker() {
 
     lock.unlock();
 
-    _discordTarget = discordTarget.load();
-    _spotifyTarget = spotifyTarget.load();
-    _speakerTarget = speakerTarget.load();
-
-    _discordPercent = discordPercent.load();
-    _spotifyPercent = spotifyPercent.load();
-    _speakerPercent = speakerPercent.load();
-
-    if (_discordTarget != _discordPercent) {
-      change_sink_volume(_discordTarget, discordPercent, DISCORD_SINK, sink);
-    }
-
-    if (_spotifyTarget != _spotifyPercent) {
-      change_sink_volume(_spotifyTarget, spotifyPercent, SPOTIFY_SINK, sink);
-    }
-
-    if (_speakerTarget != _speakerPercent) {
-      change_speaker_volume(_speakerTarget, speakerPercent, "alsa_output.pci-0000_00_1f.3.analog-stereo");
-    }
+    apply_volume(discord);
+    apply_volume(spotify);
+    apply_volume(vlc);
+    apply_volume(speaker);
 
     lock.lock();
   }
@@ -115,6 +143,8 @@ inline void notify_worker() {
 bool isNum(const std::string& str) {
   return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
 }
+
+
 
 int main(int argc, char *argv[]) {
 
@@ -139,7 +169,6 @@ int main(int argc, char *argv[]) {
 
   bool spotifyPickup = false;
   bool discordPickup = false;
-
   
   static auto refreshTimer = std::chrono::steady_clock::now();
 
@@ -165,12 +194,10 @@ int main(int argc, char *argv[]) {
 
   int fd1 = serial.getFD();
   int fd2 = serial2.getFD();
+  fd_set readfds;
 
   int maxfd;
   int activity;
-
-  fd_set readfds;
-
 
   std::thread t(async_worker);
 
@@ -222,18 +249,17 @@ int main(int argc, char *argv[]) {
                 percent += 30; // Volume boost because everyone in discord has trash mics
 
                 if (discordPickup) {
-                  if (percent == discordPercent) {
+                  if (percent == discord.volume.current) {
                     std::cout << "Discord Caught!" << std::endl;
                     discordPickup = false;
                   } else
                     break;
                 }
 
-                if (percent != discordPercent) {
+                if (percent != discord.volume.current) {
 
-                  discordTarget = percent;
+                  discord.volume.target = percent;
                   notify_worker();
-                  //std::cout << "Discord Change: " << percent << "%" << std::endl;
                   
                 } else
                   break;
@@ -242,42 +268,48 @@ int main(int argc, char *argv[]) {
                 if (SPOTIFY_SINK != -1) {
 
                   if (spotifyPickup) {
-                    if (percent == spotifyPercent) {
+                    if (percent == spotify.volume.current) {
                       std::cout << "Spotify Caught!" << std::endl;
                       spotifyPickup = false;
                     } else
                       break;
                   }
 
-                  if (percent != spotifyPercent) {
+                  if (percent != spotify.volume.current) {
  
                     
-                    spotifyTarget = percent;
+                    spotify.volume.target = percent;
                     notify_worker();
-                    //std::cout << "Spotify Change: " << percent << "%" << std::endl;
 
                   } else
                     break;
                 }
               }
             } else { // switch3 == false
-              if (SPOTIFY_SINK != -1) {
+              if (SPOTIFY_SINK != -1 && VLC_SINK == -1) {
 
                 if (spotifyPickup) {
-                  if (percent == spotifyPercent) {
+                  if (percent == spotify.volume.current) {
                     std::cout << "Spotify Caught!" << std::endl;
                     spotifyPickup = false;
                   } else
                     break;
                 }
 
-                if (percent != spotifyPercent) {
+                if (percent != spotify.volume.current) {
                   
-                  spotifyTarget = percent;
+                  spotify.volume.target = percent;
                   notify_worker();
-                  //std::cout << "Spotify Change: " << percent << "%" << std::endl;
 
                 } else
+                  break;
+              }
+
+              if (SPOTIFY_SINK == -1 && VLC_SINK != -1) {
+                if (percent != vlc.volume.current) {
+                  vlc.volume.target = percent;
+                  notify_worker();
+                } else 
                   break;
               }
             }
@@ -285,11 +317,10 @@ int main(int argc, char *argv[]) {
 
           case KNOB_SPEAKER_ID:
 
-            if (percent != speakerPercent) {
+            if (percent != speaker.volume.current) {
               
-              speakerTarget = percent;
+              speaker.volume.target = percent;
               notify_worker();
-              //std::cout << "Speaker Change: " << percent << "%" << std::endl;
 
             } else
               break;

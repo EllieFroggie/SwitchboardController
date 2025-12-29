@@ -34,7 +34,7 @@ std::string remove_quotes(std::string input) {
 }
 
 
-void Spotify::get_all_sinks(std::array<int, 3>& sinks) {
+void Spotify::get_all_sinks(std::array<int, 4>& sinks) {
     json j;
     std::string mediaName;
 
@@ -61,6 +61,10 @@ void Spotify::get_all_sinks(std::array<int, 3>& sinks) {
 
         if (mediaName.find("vesktop") != std::string::npos) {
             sinks[0] = j[i].at("index");
+        }
+
+        if (mediaName.find("vlc") != std::string::npos) {
+            sinks[3] = j[i].at("index");
         }
 
     }
