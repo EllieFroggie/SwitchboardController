@@ -13,11 +13,18 @@
 #include <mutex>
 #include <condition_variable>
 
-// g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
+// clear && g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
 
-const int KNOB_SPEAKER_ID = 14;
-const int KNOB_SPOTIFY_ID = 20;
+const int KNOB_SPEAKER_ID = 0;
+const int KNOB_SPOTIFY_ID = 1;
+
+const int BUTTON_1_ID =  6;
+const int BUTTON_2_ID = 5;
+
+const int SINGLE_CLICK = 0;
+const int DOUBLE_CLICK = 1;
+const int LONG_CLICK = 2;
 
 std::array<int, 4> sink = {-1, -1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube, 3 VLC
 
@@ -158,8 +165,8 @@ int main(int argc, char *argv[]) {
   std::string switchString;
   std::string switchValueString;
 
-  int knob;
-  int percent;
+  int knobID;
+  int knobValue;
   int switchID;
   int switchValue;
 
@@ -233,100 +240,85 @@ int main(int argc, char *argv[]) {
           valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
 
           if (!knobString.empty() && isNum(knobString)) {
-            knob = stoi(knobString);
+            knobID = stoi(knobString);
           } else
-            knob = -1;
+            knobID = -1;
 
           if (!valueString.empty() && isNum(valueString)) {
-            percent = stoi(valueString);
+            knobValue = stoi(valueString);
           }
 
-          switch (knob) {
+          switch (knobID) {
           case KNOB_SPOTIFY_ID:
-          
-            if (switch_three == true) {
-              if (DISCORD_SINK != -1) {
-                percent += 30; // Volume boost because everyone in discord has trash mics
 
-                if (discordPickup) {
-                  if (percent == discord.volume.current) {
-                    std::cout << "Discord Caught!" << std::endl;
-                    discordPickup = false;
-                  } else
-                    break;
-                }
+            if (SPOTIFY_SINK != -1 && VLC_SINK == -1) {
 
-                if (percent != discord.volume.current) {
-
-                  discord.volume.target = percent;
-                  notify_worker();
-                  
-                } else
-                  break;
-
-              } else {
-                if (SPOTIFY_SINK != -1) {
-
-                  if (spotifyPickup) {
-                    if (percent == spotify.volume.current) {
-                      std::cout << "Spotify Caught!" << std::endl;
-                      spotifyPickup = false;
-                    } else
-                      break;
-                  }
-
-                  if (percent != spotify.volume.current) {
- 
-                    
-                    spotify.volume.target = percent;
-                    notify_worker();
-
-                  } else
-                    break;
-                }
-              }
-            } else { // switch3 == false
-              if (SPOTIFY_SINK != -1 && VLC_SINK == -1) {
-
-                if (spotifyPickup) {
-                  if (percent == spotify.volume.current) {
-                    std::cout << "Spotify Caught!" << std::endl;
-                    spotifyPickup = false;
-                  } else
-                    break;
-                }
-
-                if (percent != spotify.volume.current) {
-                  
-                  spotify.volume.target = percent;
-                  notify_worker();
-
+              if (spotifyPickup) {
+                if (knobValue == spotify.volume.current) {
+                  std::cout << "Spotify Caught!" << std::endl;
+                  spotifyPickup = false;
                 } else
                   break;
               }
 
-              if (SPOTIFY_SINK == -1 && VLC_SINK != -1) {
-                if (percent != vlc.volume.current) {
-                  vlc.volume.target = percent;
-                  notify_worker();
-                } else 
-                  break;
-              }
+              if (knobValue != spotify.volume.current) {
+
+                spotify.volume.target = knobValue;
+                notify_worker();
+
+              } else
+                break;
             }
+
+            if (SPOTIFY_SINK == -1 && VLC_SINK != -1) {
+              if (knobValue != vlc.volume.current) {
+                vlc.volume.target = knobValue;
+                notify_worker();
+              } else
+                break;
+            }
+
             break;
 
           case KNOB_SPEAKER_ID:
-
-            if (percent != speaker.volume.current) {
+            
+            if (knobValue != speaker.volume.current) {
               
-              speaker.volume.target = percent;
+              speaker.volume.target = knobValue;
               notify_worker();
 
             } else
               break;
             break;
+
+            // Buttons are read from the same device as knobs so share variables
+            case BUTTON_1_ID:
+              if (knobValue == SINGLE_CLICK) {
+                try {
+                  exec_cmd(std::string("playerctl play-pause").c_str());
+                } catch (const std::runtime_error &e) {
+                  std::cout << "Playerctl error" << std::endl;
+                }
+              }
+            break;
+
+            case BUTTON_2_ID:
+              if (knobValue == SINGLE_CLICK) {
+                try {
+                  exec_cmd(std::string("playerctl next").c_str());
+                } catch (const std::runtime_error &e) {
+                  std::cout << "Playerctl error" << std::endl;
+                }
+              } else if (knobValue == DOUBLE_CLICK) {
+                try {
+                  exec_cmd(std::string("playerctl previous").c_str());
+                } catch (const std::runtime_error &e) {
+                  std::cout << "Playerctl error" << std::endl;
+                }
+              }
+            break;
+
           }
-        
       }
     }
 
@@ -362,8 +354,7 @@ int main(int argc, char *argv[]) {
               switch_one = true;
             } else if (switchValue == 0) {
               exec_cmd(std::string("pactl set-default-sink "
-                               "alsa_output.usb-Focusrite_Scarlett_Solo_USB_"
-                               "Y76QPCX21354BF-00.HiFi__Line1__sink").c_str()); // Headphones
+                               "alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line__sink").c_str()); // Headphones
               switch_one = false;
             }
             break;
@@ -382,14 +373,9 @@ int main(int argc, char *argv[]) {
             if (switchValue == 1) {
               std::cout << "Switch 3 True" << std::endl;
               switch_three = true;
-              discordPickup = true;
             } else if (switchValue == 0) {
               std::cout << "Switch 3 False" << std::endl;
               switch_three = false;
-
-              if (DISCORD_SINK != -1) {
-                spotifyPickup = true;
-              }
             }
             break;
 
