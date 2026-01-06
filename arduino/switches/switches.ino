@@ -26,27 +26,27 @@ void loop() {
 
   if(STATE1 != PREVIOUS1) {
     if(STATE1 == HIGH) {
-      Serial.println("0x1");
+      Serial.println("1:1");
     } else {
-      Serial.println("0x0");
+      Serial.println("1:0");
     }
     delay(50);
   }
 
   if(STATE2 != PREVIOUS2) {
     if(STATE2 == HIGH) {
-      Serial.println("0x3");
+      Serial.println("2:1");
     } else {
-      Serial.println("0x2");
+      Serial.println("2:0");
     }
      delay(50);
   }
 
     if(STATE3 != PREVIOUS3) {
     if(STATE3 == HIGH) {
-      Serial.println("0x5");
+      Serial.println("3:1");
     } else {
-      Serial.println("0x4");
+      Serial.println("3:0");
     }
     delay(50);
   }
