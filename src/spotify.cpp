@@ -1,8 +1,12 @@
 #include "Spotify.h"
+#include <chrono>
 #include <iostream>
 #include <algorithm>
 #include <nlohmann/json.hpp>
 #include <stdexcept>
+#include <string>
+
+
 
 using json = nlohmann::json;
 
@@ -20,8 +24,9 @@ std::string exec_cmd(const char* cmd) {
 
     int ret = pclose(pipe);
     if (ret != 0) {
-        std::cerr << "Command has exited with code " << ret << "\n";
+        std::cerr << "Error in exec_cmd: {"<< cmd << "} exited with code " << ret << "\n";
         throw std::runtime_error("Command Failed");
+        return 0;
     }
     return result;
 }
@@ -33,40 +38,45 @@ std::string remove_quotes(std::string input) {
     return input;
 }
 
+void Spotify::get_all_sinks(std::array<int, 4> &sinks, bool &lock) {
+  lock = true;
+  json j;
 
-void Spotify::get_all_sinks(std::array<int, 4>& sinks) {
-    json j;
-    std::string mediaName;
-
-    try {
-        j = json::parse(std::string(exec_cmd("pactl -f json list sink-inputs")));
-    } catch (const std::exception& e) {
-        std::cerr << "JSON parse error: " << e.what() << std::endl;
-        return;
-    }
-
-
-    for(int i = 0; i < j.size(); i++) {
-        mediaName = j[i].at("properties").at("media.name");  
-        
-        if (mediaName.find("YouTube") != std::string::npos) {
-            sinks[2] = j[i].at("index");
-        }
-        
-        if (mediaName.find("Spotify") != std::string::npos) {
-            sinks[1] = j[i].at("index");
-        }
-
-        mediaName = j[i].at("properties").at("application.process.binary");
-
-        if (mediaName.find("vesktop") != std::string::npos) {
-            sinks[0] = j[i].at("index");
-        }
-
-        if (mediaName.find("vlc") != std::string::npos) {
-            sinks[3] = j[i].at("index");
-        }
-
-    }
+  try {
+    j = json::parse(exec_cmd("pactl -f json list sink-inputs 2>/dev/null"));
+  } catch (const std::exception &e) {
+    std::cerr << "JSON parse error in get_all_sinks(): " << e.what() << '\n';
     return;
+  }
+
+  int found = 0;
+
+  for (const auto &entry : j) {
+    if (!entry.contains("properties")) continue;
+
+    const auto &props = entry["properties"];
+    const int index = entry.value("index", -1);
+
+    if (index < 0) continue;
+
+    const std::string &bin = props.value("application.process.binary", "");
+    const std::string &name = props.value("media.name", "");
+
+    if (bin.find("vesktop") != std::string::npos) {
+      sinks[0] = index;
+      found++;
+    } else if (name.find("Spotify") != std::string::npos) {
+      sinks[1] = index;
+      found++;
+    } else if (bin.find("waterfox") != std::string::npos) {
+      sinks[2] = index;
+      found++;
+    } else if (bin.find("vlc") != std::string::npos) {
+      sinks[3] = index;
+      found++;
+    }
+
+    if (found == 4) break;
+  }
+  lock = false;
 }
