@@ -1,11 +1,14 @@
 #include "SerialPort.h"
 #include "Spotify.h"
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <unistd.h>
 #include <atomic>
 #include <cctype>
 #include <condition_variable>
 #include <cstring>
 #include <iostream>
-#include <regex>
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <chrono>
@@ -13,11 +16,16 @@
 #include <mutex>
 #include <condition_variable>
 
+// #define DEBUG
+// Uncomment above to enable debug output
+
 // clear && g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
+// cp ./build/SwitchboardController $HOME/.local/bin/SwitchboardController
 
 const int KNOB_SPEAKER_ID = 0;
 const int KNOB_SPOTIFY_ID = 1;
+const int KNOB_YOUTUBE_ID = 4;
 
 const int BUTTON_1_ID =  6;
 const int BUTTON_2_ID = 5;
@@ -26,7 +34,10 @@ const int SINGLE_CLICK = 0;
 const int DOUBLE_CLICK = 1;
 const int LONG_CLICK = 2;
 
+int init = 3;
+
 std::array<int, 4> sink = {-1, -1, -1, -1}; // 0 Vesktop, 1 Spotify, 2 Youtube, 3 VLC
+bool sink_lock = false;
 
 int &DISCORD_SINK = sink[0];
 int &SPOTIFY_SINK = sink[1];
@@ -70,6 +81,12 @@ VolumeChannel vlc {
   &VLC_SINK
 };
 
+VolumeChannel youtube {
+  VolumeType::Sink,
+  {40, 40},
+  &YOUTUBE_SINK
+};
+
 VolumeChannel speaker {
   VolumeType::Speaker,
   {100, 100},
@@ -85,14 +102,32 @@ std::atomic<bool> workPending = false;
 void change_sink_volume(int readPercent, std::atomic<int> &knobPercent, int &sinkId, std::array<int, 4> &sinks) {
   if (sinkId != -1) {
     try {
-      exec_cmd(std::string("pactl set-sink-input-volume " +
+
+      #ifdef DEBUG
+      if (knobValue != youtube.volume.current) {
+              youtube.volume.target = knobValue;
+              notify_worker();
+            
+        exec_cmd(std::string("pactl set-sink-input-volume " +
                            std::to_string(sinkId) + " " +
                            std::to_string(readPercent) + "%")
                    .c_str());
+      #endif
+
+      #ifndef DEBUG
+        exec_cmd(std::string("pactl set-sink-input-volume " +
+                           std::to_string(sinkId) + " " +
+                           std::to_string(readPercent) + "%  2>/dev/null")
+                   .c_str());
+      #endif
+      
+
       knobPercent.store(readPercent);
       return;
     } catch (const std::runtime_error &e) {
-      std::cout << "Failed to set sink volume with error " << e.what() << std::endl;
+      #ifdef DEBUG
+        std::cout << "Error in change_sink_volume(): " << e.what() << std::endl;
+      #endif
       sinkId = -1;
     }
   }
@@ -103,7 +138,10 @@ void change_speaker_volume(int readPercent, std::atomic<int> &knobPercent, std::
     exec_cmd(std::string("pactl set-sink-volume " + device + " " + std::to_string(readPercent) + "%").c_str());
     knobPercent.store(readPercent);
   } catch(const std::runtime_error& e) {
-    std::cout << "Failed to set speaker volume with error: " << e.what() << std::endl;
+    #ifdef DEBUG
+      std::cout << "Error in change_speaker_volume(): " << e.what() << std::endl;
+    #endif
+
   }
 }
 
@@ -121,19 +159,31 @@ void apply_volume(VolumeChannel& ch) {
 }
 
 void async_worker() {
+
   std::unique_lock<std::mutex> lock(workerMutex);
+  auto nextRefresh = std::chrono::steady_clock::now() +  std::chrono::seconds(5);
 
   while (true) {
     
-    workerCv.wait(lock, [] { return workPending.load(); });
-    workPending = false;
+    workerCv.wait_until(lock, nextRefresh, [] { return workPending.load(); });
+    
+    bool doWork = workPending.exchange(false);
+    bool doRefresh = std::chrono::steady_clock::now() >= nextRefresh;
 
     lock.unlock();
 
-    apply_volume(discord);
-    apply_volume(spotify);
-    apply_volume(vlc);
-    apply_volume(speaker);
+    if (doWork) {
+      apply_volume(discord);
+      apply_volume(spotify);
+      apply_volume(vlc);
+      apply_volume(youtube);
+      apply_volume(speaker);
+    }
+
+    if (doRefresh && !sink_lock) {
+      Spotify::get_all_sinks(sink, sink_lock);
+      nextRefresh = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    }
 
     lock.lock();
   }
@@ -147,11 +197,12 @@ inline void notify_worker() {
   workerCv.notify_one();
 }
 
-bool isNum(const std::string& str) {
-  return !str.empty() && std::all_of(str.begin(), str.end(), ::isdigit);
+bool is_num(const std::string& str) {
+
+  return !str.empty() &&
+         std::all_of(str.begin(), str.end(),
+                     [](unsigned char c) { return std::isdigit(c); });
 }
-
-
 
 int main(int argc, char *argv[]) {
 
@@ -177,6 +228,8 @@ int main(int argc, char *argv[]) {
   bool spotifyPickup = false;
   bool discordPickup = false;
   
+  bool workDone;
+
   static auto refreshTimer = std::chrono::steady_clock::now();
 
   if (!serial.openPort()) {
@@ -206,11 +259,20 @@ int main(int argc, char *argv[]) {
   int maxfd;
   int activity;
 
-  std::thread t(async_worker);
+  #ifdef DEBUG
+  int loop_count = 0;
+  auto last_print = std::chrono::steady_clock::now();
+  #endif
 
   std::cout << "Boards Detected, Worker Thread Started, Initialization Complete! Waiting for data...\n";
+  std::thread t(async_worker);
+
+  Spotify::get_all_sinks(sink, sink_lock);
+
 
   while (true) {
+
+    workDone = false;
 
     FD_ZERO(&readfds);
     FD_SET(fd1, &readfds);
@@ -220,17 +282,33 @@ int main(int argc, char *argv[]) {
     activity = select(maxfd, &readfds, NULL, NULL, NULL);
 
     if (activity < 0) {
-      std::cerr << "select error: " << strerror(errno) << "\n";
+      std::cerr << "select() error: " << strerror(errno) << "\n";
       continue;
     }
+
+    #ifdef DEBUG // Loop Frequency Counter, used to figure out what's causing cpu thrashing
+    loop_count++;
+    auto now = std::chrono::steady_clock::now();
+    if (now - last_print > std::chrono::seconds(1)) {
+        std::cout << "Loop frequency: " << loop_count << " Hz" << std::endl;
+        loop_count = 0;
+        last_print = now;
+    }
+    #endif
 
     // Arduino 1 (Knobs)
     if (FD_ISSET(fd1, &readfds)) {
       data = serial.readLine();
 
-      //std::cout << data << std::endl;
-
       if (!data.empty()) {
+
+          workDone = true;
+          
+          // Dump the first 3 reads because it was doing weird stuff
+          if (init > 0) {
+            init--;
+            continue;
+          }
 
           p = data.find(":");
           if (p == std::string::npos) continue;
@@ -239,18 +317,18 @@ int main(int argc, char *argv[]) {
           valueString = data.substr(p + 1);
           valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
 
-          if (!knobString.empty() && isNum(knobString)) {
+          if (!knobString.empty() && is_num(knobString)) {
             knobID = stoi(knobString);
           } else
             knobID = -1;
 
-          if (!valueString.empty() && isNum(valueString)) {
+          if (!valueString.empty() && is_num(valueString)) {
             knobValue = stoi(valueString);
           }
 
           switch (knobID) {
-          case KNOB_SPOTIFY_ID:
 
+          case KNOB_SPOTIFY_ID:
             if (SPOTIFY_SINK != -1 && VLC_SINK == -1) {
 
               if (spotifyPickup) {
@@ -274,48 +352,59 @@ int main(int argc, char *argv[]) {
               if (knobValue != vlc.volume.current) {
                 vlc.volume.target = knobValue;
                 notify_worker();
-              } else
-                break;
+              } else break;
             }
-
             break;
 
           case KNOB_SPEAKER_ID:
-            
             if (knobValue != speaker.volume.current) {
-              
               speaker.volume.target = knobValue;
               notify_worker();
-
-            } else
-              break;
+            } else break;
             break;
 
-            // Buttons are read from the same device as knobs so share variables
-            case BUTTON_1_ID:
-              if (knobValue == SINGLE_CLICK) {
-                try {
-                  exec_cmd(std::string("playerctl play-pause").c_str());
-                } catch (const std::runtime_error &e) {
-                  std::cout << "Playerctl error" << std::endl;
-                }
+          case KNOB_YOUTUBE_ID:
+            knobValue += 10;
+            if (YOUTUBE_SINK != -1) {
+              if (knobValue != youtube.volume.current) {
+                youtube.volume.target = knobValue;
+                notify_worker();
+              } else break;
+            }
+            break;
+          
+          // Buttons are read from the same device as knobs so share variables
+          case BUTTON_1_ID:
+            if (knobValue == SINGLE_CLICK) {
+              try {
+                exec_cmd(std::string("playerctl play-pause").c_str());
+              } catch (const std::runtime_error &e) {
+                std::cout << "Playerctl error" << std::endl;
               }
+            } else if (knobValue == DOUBLE_CLICK) {
+              try {
+                exec_cmd(std::string("systemctl --user restart spotifyd.service").c_str());
+                std::cout << "Refreshing Spotify" << std::endl;
+              } catch (const std::runtime_error &e) {
+                std::cout << "Refresh Spotify Error" << std::endl;
+              }
+            }
             break;
 
-            case BUTTON_2_ID:
-              if (knobValue == SINGLE_CLICK) {
-                try {
-                  exec_cmd(std::string("playerctl next").c_str());
-                } catch (const std::runtime_error &e) {
-                  std::cout << "Playerctl error" << std::endl;
-                }
-              } else if (knobValue == DOUBLE_CLICK) {
-                try {
-                  exec_cmd(std::string("playerctl previous").c_str());
-                } catch (const std::runtime_error &e) {
-                  std::cout << "Playerctl error" << std::endl;
-                }
+          case BUTTON_2_ID:
+            if (knobValue == SINGLE_CLICK) {
+              try {
+                exec_cmd(std::string("playerctl next").c_str());
+              } catch (const std::runtime_error &e) {
+                std::cout << "Playerctl error" << std::endl;
               }
+            } else if (knobValue == DOUBLE_CLICK) {
+              try {
+                exec_cmd(std::string("playerctl previous").c_str());
+              } catch (const std::runtime_error &e) {
+                std::cout << "Playerctl error" << std::endl;
+              }
+            }
             break;
 
           }
@@ -326,9 +415,8 @@ int main(int argc, char *argv[]) {
     if (FD_ISSET(fd2, &readfds)) {
       data = serial2.readLine();
       if (!data.empty()) {
-          
-          //std::cout << data << std::endl;
-          
+
+          workDone = true;  
           p = data.find(":");
           if (p == std::string::npos) continue;
 
@@ -371,10 +459,18 @@ int main(int argc, char *argv[]) {
 
           case 3:
             if (switchValue == 1) {
-              std::cout << "Switch 3 True" << std::endl;
+              try {
+                exec_cmd("wlcrosshairctl show 2>/dev/null");
+              } catch (const std::exception& e) {
+                std::cout << "Failed to show wlcrosshair. Is it running?" << std::endl;
+              }
               switch_three = true;
             } else if (switchValue == 0) {
-              std::cout << "Switch 3 False" << std::endl;
+              try {
+                exec_cmd("wlcrosshairctl hide 2>/dev/null");
+              } catch (const std::exception& e) {
+                std::cout << "Failed to hide wlcrosshair. Is it running?" << std::endl;
+              }
               switch_three = false;
             }
             break;
@@ -384,11 +480,8 @@ int main(int argc, char *argv[]) {
       }
     }
 
-    if (std::chrono::steady_clock::now() - refreshTimer > std::chrono::seconds(2)) {
-      Spotify::get_all_sinks(sink);
-      refreshTimer = std::chrono::steady_clock::now();
-    }
-  }
+    if (!workDone) std::this_thread::sleep_for(std::chrono::milliseconds(1));
 
+  }
   return 0;
 }
