@@ -2,8 +2,7 @@
 Description=Arduino Switchboard Control Service
 
 [Service]
+CPUQuota=5%
+
 Type=simple
 ExecStart=%h/.local/bin/SwitchboardController
-Restart=unless-stopped
-
-[Install]
