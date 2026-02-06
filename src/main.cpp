@@ -208,22 +208,13 @@ int main(int argc, char *argv[]) {
 
   SerialPort serial("/dev/ttyUSB1", 9600);
   SerialPort serial2("/dev/ttyUSB0", 9600);
-  std::string data;
 
   size_t p;
-  std::string knobString;
-  std::string valueString;
-  std::string switchString;
-  std::string switchValueString;
 
   int knobID;
   int knobValue;
   int switchID;
   int switchValue;
-
-  bool switch_one = false;
-  bool switch_two = false;
-  bool switch_three = false;
 
   bool spotifyPickup = false;
   bool discordPickup = false;
@@ -256,9 +247,6 @@ int main(int argc, char *argv[]) {
   int fd2 = serial2.getFD();
   fd_set readfds;
 
-  int maxfd;
-  int activity;
-
   #ifdef DEBUG
   int loop_count = 0;
   auto last_print = std::chrono::steady_clock::now();
@@ -278,8 +266,8 @@ int main(int argc, char *argv[]) {
     FD_SET(fd1, &readfds);
     FD_SET(fd2, &readfds);
 
-    maxfd = (fd1 > fd2 ? fd1 : fd2) + 1;
-    activity = select(maxfd, &readfds, NULL, NULL, NULL);
+    int maxfd = (fd1 > fd2 ? fd1 : fd2) + 1;
+    int activity = select(maxfd, &readfds, NULL, NULL, NULL);
 
     if (activity < 0) {
       std::cerr << "select() error: " << strerror(errno) << "\n";
@@ -298,7 +286,7 @@ int main(int argc, char *argv[]) {
 
     // Arduino 1 (Knobs)
     if (FD_ISSET(fd1, &readfds)) {
-      data = serial.readLine();
+      std::string data = serial.readLine();
 
       if (!data.empty()) {
 
@@ -313,8 +301,8 @@ int main(int argc, char *argv[]) {
           p = data.find(":");
           if (p == std::string::npos) continue;
             
-          knobString = data.substr(0, p);
-          valueString = data.substr(p + 1);
+          std::string knobString = data.substr(0, p);
+          std::string valueString = data.substr(p + 1);
           valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
 
           if (!knobString.empty() && is_num(knobString)) {
@@ -373,7 +361,7 @@ int main(int argc, char *argv[]) {
             }
             break;
           
-          // Buttons are read from the same device as knobs so share variables
+          // Buttons are read from the same device as knobs so share value variables
           case BUTTON_1_ID:
             if (knobValue == SINGLE_CLICK) {
               try {
@@ -413,15 +401,15 @@ int main(int argc, char *argv[]) {
 
     // Arduino 2 (Switches)
     if (FD_ISSET(fd2, &readfds)) {
-      data = serial2.readLine();
+      std::string data = serial2.readLine();
       if (!data.empty()) {
 
           workDone = true;  
           p = data.find(":");
           if (p == std::string::npos) continue;
 
-          switchString = data.substr(0, p);
-          switchValueString = data.substr(p + 1);
+          std::string switchString = data.substr(0, p);
+          std::string switchValueString = data.substr(p + 1);
 
           if (!switchString.empty()) {
             switchID = stoi(switchString);
@@ -439,21 +427,17 @@ int main(int argc, char *argv[]) {
             if (switchValue == 1) {
               exec_cmd(std::string("pactl set-default-sink "
                                "alsa_output.pci-0000_00_1f.3.analog-stereo").c_str()); // Speakers
-              switch_one = true;
             } else if (switchValue == 0) {
               exec_cmd(std::string("pactl set-default-sink "
                                "alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line__sink").c_str()); // Headphones
-              switch_one = false;
             }
             break;
 
           case 2:
             if (switchValue == 1) {
               exec_cmd("amixer set Capture nocap");
-              switch_two = true;
             } else if (switchValue == 0) {
               exec_cmd("amixer set Capture cap");
-              switch_two = false;
             }
             break;
 
@@ -464,14 +448,12 @@ int main(int argc, char *argv[]) {
               } catch (const std::exception& e) {
                 std::cout << "Failed to show wlcrosshair. Is it running?" << std::endl;
               }
-              switch_three = true;
             } else if (switchValue == 0) {
               try {
                 exec_cmd("wlcrosshairctl hide 2>/dev/null");
               } catch (const std::exception& e) {
                 std::cout << "Failed to hide wlcrosshair. Is it running?" << std::endl;
               }
-              switch_three = false;
             }
             break;
 
