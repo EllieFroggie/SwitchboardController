@@ -31,13 +31,6 @@ std::string exec_cmd(const char* cmd) {
     return result;
 }
 
-//https://shinyu.org/en/cpp/strings/removing-quotes-from-a-string/
-std::string remove_quotes(std::string input) {
-    input.erase(std::remove(input.begin(), input.end(), '\"'), input.end());
-    input.erase(std::remove(input.begin(), input.end(), '\''), input.end());
-    return input;
-}
-
 void Spotify::get_all_sinks(std::array<int, 4> &sinks, bool &lock) {
   lock = true;
   json j;
