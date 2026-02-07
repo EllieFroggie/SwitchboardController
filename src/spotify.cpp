@@ -43,7 +43,7 @@ void Spotify::get_all_sinks(std::array<int, 4> &sinks, bool &lock) {
   json j;
 
   try {
-    j = json::parse(exec_cmd("pactl -f json list sink-inputs 2>/dev/null"));
+     j = json::parse(exec_cmd("pactl -f json list sink-inputs 2>/dev/null"));
   } catch (const std::exception &e) {
     std::cerr << "JSON parse error in get_all_sinks(): " << e.what() << '\n';
     lock = false;

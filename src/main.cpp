@@ -27,6 +27,10 @@ const int KNOB_SPEAKER_ID = 0;
 const int KNOB_SPOTIFY_ID = 1;
 const int KNOB_YOUTUBE_ID = 4;
 
+const int SWITCH_ONE_ID = 7;
+const int SWITCH_TWO_ID = 8;
+const int SWITCH_THREE_ID = 9;
+
 const int BUTTON_1_ID =  6;
 const int BUTTON_2_ID = 5;
 
@@ -204,6 +208,8 @@ bool is_num(const std::string& str) {
                      [](unsigned char c) { return std::isdigit(c); });
 }
 
+
+
 int main(int argc, char *argv[]) {
 
   SerialPort serial("/dev/ttyUSB1", 9600);
@@ -219,7 +225,7 @@ int main(int argc, char *argv[]) {
   bool spotifyPickup = false;
   bool discordPickup = false;
   
-  bool workDone;
+  bool workDone = false;
 
   static auto refreshTimer = std::chrono::steady_clock::now();
 
@@ -288,177 +294,181 @@ int main(int argc, char *argv[]) {
     if (FD_ISSET(fd1, &readfds)) {
       std::string data = serial.readLine();
 
-      if (!data.empty()) {
+      if (data.empty()) continue;
+      workDone = true;
 
-          workDone = true;
-          
-          // Dump the first 3 reads because it was doing weird stuff
-          if (init > 0) {
-            init--;
-            continue;
+      // Dump the first 3 reads because it was doing weird stuff
+      if (init > 0) {
+        init--;
+        continue;
+      }
+
+      p = data.find(":");
+      if (p == std::string::npos) continue;
+
+      std::string knobString = data.substr(0, p);
+      std::string valueString = data.substr(p + 1);
+      valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
+
+      if (!knobString.empty() && is_num(knobString)) {
+        knobID = stoi(knobString);
+      } else
+        knobID = -1;
+
+      if (!valueString.empty() && is_num(valueString)) {
+        knobValue = stoi(valueString);
+      }
+
+      switch (knobID) {
+
+      case KNOB_SPOTIFY_ID:
+        if (SPOTIFY_SINK != -1 && VLC_SINK == -1) {
+
+          if (spotifyPickup) {
+            if (knobValue == spotify.volume.current) {
+              std::cout << "Spotify Caught!" << std::endl;
+              spotifyPickup = false;
+            } else
+              break;
           }
 
-          p = data.find(":");
-          if (p == std::string::npos) continue;
-            
-          std::string knobString = data.substr(0, p);
-          std::string valueString = data.substr(p + 1);
-          valueString.erase(valueString.find_last_not_of(" \n\r\t") + 1);
+          if (knobValue != spotify.volume.current) {
 
-          if (!knobString.empty() && is_num(knobString)) {
-            knobID = stoi(knobString);
+            spotify.volume.target = knobValue;
+            notify_worker();
+
           } else
-            knobID = -1;
+            break;
+        }
 
-          if (!valueString.empty() && is_num(valueString)) {
-            knobValue = stoi(valueString);
+        if (SPOTIFY_SINK == -1 && VLC_SINK != -1) {
+          if (knobValue != vlc.volume.current) {
+            vlc.volume.target = knobValue;
+            notify_worker();
+          } else
+            break;
+        }
+        break;
+
+      case KNOB_SPEAKER_ID:
+        if (knobValue != speaker.volume.current) {
+          speaker.volume.target = knobValue;
+          notify_worker();
+        } else
+          break;
+        break;
+
+      case KNOB_YOUTUBE_ID:
+        knobValue += 10;
+        if (YOUTUBE_SINK != -1) {
+          if (knobValue != youtube.volume.current) {
+            youtube.volume.target = knobValue;
+            notify_worker();
+          } else
+            break;
+        }
+        break;
+
+      // Buttons are read from the same device as knobs so share value variables
+      case BUTTON_1_ID:
+        if (knobValue == SINGLE_CLICK) {
+          try {
+            exec_cmd(std::string("playerctl play-pause").c_str());
+          } catch (const std::runtime_error &e) {
+            std::cout << "Playerctl error" << std::endl;
           }
-
-          switch (knobID) {
-
-          case KNOB_SPOTIFY_ID:
-            if (SPOTIFY_SINK != -1 && VLC_SINK == -1) {
-
-              if (spotifyPickup) {
-                if (knobValue == spotify.volume.current) {
-                  std::cout << "Spotify Caught!" << std::endl;
-                  spotifyPickup = false;
-                } else
-                  break;
-              }
-
-              if (knobValue != spotify.volume.current) {
-
-                spotify.volume.target = knobValue;
-                notify_worker();
-
-              } else
-                break;
-            }
-
-            if (SPOTIFY_SINK == -1 && VLC_SINK != -1) {
-              if (knobValue != vlc.volume.current) {
-                vlc.volume.target = knobValue;
-                notify_worker();
-              } else break;
-            }
-            break;
-
-          case KNOB_SPEAKER_ID:
-            if (knobValue != speaker.volume.current) {
-              speaker.volume.target = knobValue;
-              notify_worker();
-            } else break;
-            break;
-
-          case KNOB_YOUTUBE_ID:
-            knobValue += 10;
-            if (YOUTUBE_SINK != -1) {
-              if (knobValue != youtube.volume.current) {
-                youtube.volume.target = knobValue;
-                notify_worker();
-              } else break;
-            }
-            break;
-          
-          // Buttons are read from the same device as knobs so share value variables
-          case BUTTON_1_ID:
-            if (knobValue == SINGLE_CLICK) {
-              try {
-                exec_cmd(std::string("playerctl play-pause").c_str());
-              } catch (const std::runtime_error &e) {
-                std::cout << "Playerctl error" << std::endl;
-              }
-            } else if (knobValue == DOUBLE_CLICK) {
-              try {
-                exec_cmd(std::string("systemctl --user restart spotifyd.service").c_str());
-                std::cout << "Refreshing Spotify" << std::endl;
-              } catch (const std::runtime_error &e) {
-                std::cout << "Refresh Spotify Error" << std::endl;
-              }
-            }
-            break;
-
-          case BUTTON_2_ID:
-            if (knobValue == SINGLE_CLICK) {
-              try {
-                exec_cmd(std::string("playerctl next").c_str());
-              } catch (const std::runtime_error &e) {
-                std::cout << "Playerctl error" << std::endl;
-              }
-            } else if (knobValue == DOUBLE_CLICK) {
-              try {
-                exec_cmd(std::string("playerctl previous").c_str());
-              } catch (const std::runtime_error &e) {
-                std::cout << "Playerctl error" << std::endl;
-              }
-            }
-            break;
-
+        } else if (knobValue == DOUBLE_CLICK) {
+          try {
+            exec_cmd(std::string("systemctl --user restart spotifyd.service")
+                         .c_str());
+            std::cout << "Refreshing Spotify" << std::endl;
+          } catch (const std::runtime_error &e) {
+            std::cout << "Refresh Spotify Error" << std::endl;
           }
+        }
+        break;
+
+      case BUTTON_2_ID:
+        if (knobValue == SINGLE_CLICK) {
+          try {
+            exec_cmd(std::string("playerctl next").c_str());
+          } catch (const std::runtime_error &e) {
+            std::cout << "Playerctl error" << std::endl;
+          }
+        } else if (knobValue == DOUBLE_CLICK) {
+          try {
+            exec_cmd(std::string("playerctl previous").c_str());
+          } catch (const std::runtime_error &e) {
+            std::cout << "Playerctl error" << std::endl;
+          }
+        }
+        break;
       }
     }
 
     // Arduino 2 (Switches)
     if (FD_ISSET(fd2, &readfds)) {
+
       std::string data = serial2.readLine();
-      if (!data.empty()) {
+      if (data.empty()) continue;
 
-          workDone = true;  
-          p = data.find(":");
-          if (p == std::string::npos) continue;
+      workDone = true;
+      p = data.find(":");
+      if (p == std::string::npos) continue;
 
-          std::string switchString = data.substr(0, p);
-          std::string switchValueString = data.substr(p + 1);
+      std::string switchString = data.substr(0, p);
+      std::string switchValueString = data.substr(p + 1);
 
-          if (!switchString.empty()) {
-            switchID = stoi(switchString);
-          } else
-            switchID = -1;
+      if (!switchString.empty()) {
+        switchID = stoi(switchString);
+      } else
+        switchID = -1;
 
-          if (!switchValueString.empty()) {
-            switchValue = stoi(switchValueString);
-          } else
-            switchValue = -1;
+      if (!switchValueString.empty()) {
+        switchValue = stoi(switchValueString);
+      } else
+        switchValue = -1;
 
-          switch (switchID) {
+      switch (switchID) {
 
-          case 1:
-            if (switchValue == 1) {
-              exec_cmd(std::string("pactl set-default-sink "
-                               "alsa_output.pci-0000_00_1f.3.analog-stereo").c_str()); // Speakers
-            } else if (switchValue == 0) {
-              exec_cmd(std::string("pactl set-default-sink "
-                               "alsa_output.usb-Focusrite_Scarlett_Solo_USB_Y76QPCX21354BF-00.HiFi__Line__sink").c_str()); // Headphones
-            }
-            break;
+      case SWITCH_ONE_ID:
+        if (switchValue == 1) {
+          exec_cmd(std::string("pactl set-default-sink "
+                               "alsa_output.pci-0000_00_1f.3.analog-stereo")
+                       .c_str()); // Speakers
+        } else if (switchValue == 0) {
+          exec_cmd(std::string("pactl set-default-sink "
+                               "alsa_output.usb-Focusrite_Scarlett_Solo_USB_"
+                               "Y76QPCX21354BF-00.HiFi__Line__sink")
+                       .c_str()); // Headphones
+        }
+        break;
 
-          case 2:
-            if (switchValue == 1) {
-              exec_cmd("amixer set Capture nocap");
-            } else if (switchValue == 0) {
-              exec_cmd("amixer set Capture cap");
-            }
-            break;
+      case SWITCH_TWO_ID:
+        if (switchValue == 1) {
+          exec_cmd("amixer set Capture nocap");
+        } else if (switchValue == 0) {
+          exec_cmd("amixer set Capture cap");
+        }
+        break;
 
-          case 3:
-            if (switchValue == 1) {
-              try {
-                exec_cmd("wlcrosshairctl show 2>/dev/null");
-              } catch (const std::exception& e) {
-                std::cout << "Failed to show wlcrosshair. Is it running?" << std::endl;
-              }
-            } else if (switchValue == 0) {
-              try {
-                exec_cmd("wlcrosshairctl hide 2>/dev/null");
-              } catch (const std::exception& e) {
-                std::cout << "Failed to hide wlcrosshair. Is it running?" << std::endl;
-              }
-            }
-            break;
-
+      case SWITCH_THREE_ID:
+        if (switchValue == 1) {
+          try {
+            exec_cmd("wlcrosshairctl show 2>/dev/null");
+          } catch (const std::exception &e) {
+            std::cout << "Failed to show wlcrosshair. Is it running?"
+                      << std::endl;
           }
-        
+        } else if (switchValue == 0) {
+          try {
+            exec_cmd("wlcrosshairctl hide 2>/dev/null");
+          } catch (const std::exception &e) {
+            std::cout << "Failed to hide wlcrosshair. Is it running?"
+                      << std::endl;
+          }
+        }
+        break;
       }
     }
 
