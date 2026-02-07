@@ -20,6 +20,7 @@
 // Uncomment above to enable debug output
 
 // clear && g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
+// valgrind --leak-check=full --show-leak-kinds=all -s ./build/test_SwitchboardController
 // watch -n 0.5 systemctl --user status InoSwitchboardController.service
 // cp ./build/SwitchboardController $HOME/.local/bin/SwitchboardController
 
@@ -149,16 +150,16 @@ void change_speaker_volume(int readPercent, std::atomic<int> &knobPercent, std::
   }
 }
 
-void apply_volume(VolumeChannel& ch) {
-  int target = ch.volume.target.load();
-  int current = ch.volume.current.load();
+void apply_volume(VolumeChannel& channel) {
+  int target = channel.volume.target.load();
+  int current = channel.volume.current.load();
 
   if (target == current) return;
 
-  if (ch.type == VolumeType::Sink && ch.sinkID && *ch.sinkID != -1) {
-    change_sink_volume(target, ch.volume.current, *ch.sinkID, sink);
-  } else if (ch.type == VolumeType::Speaker) {
-    change_speaker_volume(target, ch.volume.current, ch.speaker);
+  if (channel.type == VolumeType::Sink && channel.sinkID && *channel.sinkID != -1) {
+    change_sink_volume(target, channel.volume.current, *channel.sinkID, sink);
+  } else if (channel.type == VolumeType::Speaker) {
+    change_speaker_volume(target, channel.volume.current, channel.speaker);
   }
 }
 
@@ -186,7 +187,7 @@ void async_worker() {
 
     if (doRefresh && !sink_lock) {
       Spotify::get_all_sinks(sink, sink_lock);
-      nextRefresh = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+      nextRefresh = std::chrono::steady_clock::now() + std::chrono::seconds(2);
     }
 
     lock.lock();
@@ -202,20 +203,33 @@ inline void notify_worker() {
 }
 
 bool is_num(const std::string& str) {
-
   return !str.empty() &&
          std::all_of(str.begin(), str.end(),
                      [](unsigned char c) { return std::isdigit(c); });
 }
 
+void serial_init(SerialPort& serial) {
+  if (!serial.openPort()) {
+    std::cerr << "Failed to open port " << serial.getDevice() << std::endl;
+    exit(1);
+  }
+
+  if (!serial.configurePort()) {
+    std::cerr << "Failed to configure port " << serial.getDevice() << std::endl;
+    exit(1);
+  }
+}
 
 
 int main(int argc, char *argv[]) {
 
+  #ifdef DEBUG
+  int loop_count = 0;
+  auto last_print = std::chrono::steady_clock::now();
+  #endif
+
   SerialPort serial("/dev/ttyUSB1", 9600);
   SerialPort serial2("/dev/ttyUSB0", 9600);
-
-  size_t p;
 
   int knobID;
   int knobValue;
@@ -224,45 +238,19 @@ int main(int argc, char *argv[]) {
 
   bool spotifyPickup = false;
   bool discordPickup = false;
-  
   bool workDone = false;
 
-  static auto refreshTimer = std::chrono::steady_clock::now();
+  serial_init(serial);
+  serial_init(serial2);
 
-  if (!serial.openPort()) {
-    std::cerr << "Failed to open port " << serial.getDevice() << std::endl;
-    return 1;
-  }
-
-  if (!serial.configurePort()) {
-    std::cerr << "Failed to configure port " << serial.getDevice() << std::endl;
-    return 1;
-  }
-
-  if (!serial2.openPort()) {
-    std::cerr << "Failed to open port " << serial2.getDevice() << std::endl;
-    return 1;
-  }
-
-  if (!serial2.configurePort()) {
-    std::cerr << "Failed to configure port " << serial2.getDevice() << std::endl;
-    return 1;
-  }
-
+  fd_set readfds;
   int fd1 = serial.getFD();
   int fd2 = serial2.getFD();
-  fd_set readfds;
 
-  #ifdef DEBUG
-  int loop_count = 0;
-  auto last_print = std::chrono::steady_clock::now();
-  #endif
-
-  std::cout << "Boards Detected, Worker Thread Started, Initialization Complete! Waiting for data...\n";
   std::thread t(async_worker);
-
   Spotify::get_all_sinks(sink, sink_lock);
-
+  std::cout << "Boards Detected, Worker Thread Started, Initialization Complete! Waiting for data...\n";
+  
 
   while (true) {
 
@@ -303,7 +291,7 @@ int main(int argc, char *argv[]) {
         continue;
       }
 
-      p = data.find(":");
+      size_t p = data.find(":");
       if (p == std::string::npos) continue;
 
       std::string knobString = data.substr(0, p);
@@ -413,7 +401,7 @@ int main(int argc, char *argv[]) {
       if (data.empty()) continue;
 
       workDone = true;
-      p = data.find(":");
+      size_t p = data.find(":");
       if (p == std::string::npos) continue;
 
       std::string switchString = data.substr(0, p);
