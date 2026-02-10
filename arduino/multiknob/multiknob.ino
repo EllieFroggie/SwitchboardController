@@ -47,12 +47,16 @@ void loop() {
     Serial.println("5:0");
   } else if (button_one.isDoubleClick()) {
     Serial.println("5:1");
+  } else if (button_one.isLongClick()) {
+    Serial.println("5:2");
   }
 
   if (button_two.isSingleClick()) {
     Serial.println("6:0");
   } else if (button_two.isDoubleClick()) {
     Serial.println("6:1");
+  } else if (button_two.isLongClick()) {
+    Serial.println("6:2");
   }
   
   for (int i = 0; i < 3; i++) {

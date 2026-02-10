@@ -21,7 +21,6 @@
 
 // clear && g++ -std=c++17 -Iinclude src/main.cpp src/SerialPort.cpp src/spotify.cpp -o build/test_SwitchboardController
 // valgrind --leak-check=full --show-leak-kinds=all -s ./build/test_SwitchboardController
-// watch -n 0.5 systemctl --user status InoSwitchboardController.service
 // cp ./build/SwitchboardController $HOME/.local/bin/SwitchboardController
 
 const int KNOB_SPEAKER_ID = 0;
@@ -372,6 +371,13 @@ int main(int argc, char *argv[]) {
             std::cout << "Refreshing Spotify" << std::endl;
           } catch (const std::runtime_error &e) {
             std::cout << "Refresh Spotify Error" << std::endl;
+          }
+        } else if (knobValue == LONG_CLICK) {
+          try {
+            exec_cmd(std::string("systemctl --user restart InoSwitchboardController.service")
+                         .c_str());
+          } catch (const std::runtime_error &e) {
+            std::cout << "Failed to restart controller service" << std::endl;
           }
         }
         break;
