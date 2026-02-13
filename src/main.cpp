@@ -37,7 +37,7 @@ int main() {
     worker.join();
   }
 
-  std::cout << "main(): Shutdown complete. Goodbye." << std::endl;
+  std::cout << "main(): Shutdown complete." << std::endl;
 
   return 0;
 }
