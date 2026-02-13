@@ -1,11 +1,12 @@
 #pragma once
+#include "Utils.h"
 #include <string>
 #include <array>
 
-class Spotify {
+class AudioManager {
 
     public: 
-        static void get_all_sinks(std::array<int, 4>& sinks, bool& lock);
+        static void get_all_sinks(std::array<int, 4> &sinks, bool& lock);
         int get_volume();
         int sink;
 
@@ -15,6 +16,5 @@ class Spotify {
 
 };
 
-std::string exec_cmd(const char* cmd);
 
 

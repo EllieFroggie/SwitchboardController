@@ -1,4 +1,4 @@
-#include "Spotify.h"
+#include "AudioManager.h"
 #include <chrono>
 #include <iostream>
 #include <algorithm>
@@ -8,35 +8,15 @@
 
 
 
+
 using json = nlohmann::json;
 
-// super not safe but will have to do for now
-std::string exec_cmd(const char* cmd) {
-    std::array<char, 256> buffer{};
-    std::string result;
-
-    FILE* pipe = popen(cmd, "r");
-    if (!pipe) throw std::runtime_error("popen() failed!");
-
-    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
-        result += buffer.data();
-    }
-
-    int ret = pclose(pipe);
-    if (ret != 0) {
-        std::cerr << "Error in exec_cmd: {"<< cmd << "} exited with code " << ret << "\n";
-        throw std::runtime_error("Command Failed");
-        return 0;
-    }
-    return result;
-}
-
-void Spotify::get_all_sinks(std::array<int, 4> &sinks, bool &lock) {
+void AudioManager::get_all_sinks(std::array<int, 4> &sinks, bool &lock) {
   lock = true;
   json j;
 
   try {
-     j = json::parse(exec_cmd("pactl -f json list sink-inputs 2>/dev/null"));
+     j = json::parse(Utils::exec_cmd("pactl -f json list sink-inputs 2>/dev/null"));
   } catch (const std::exception &e) {
     std::cerr << "JSON parse error in get_all_sinks(): " << e.what() << '\n';
     lock = false;

@@ -100,3 +100,14 @@ void SerialPort::closePort() {
     }
 }
 
+void serial_init(SerialPort& serial) {
+  if (!serial.openPort()) {
+    std::cerr << "serial_init(): Failed to open port " << serial.getDevice() << std::endl;
+    exit(1);
+  }
+
+  if (!serial.configurePort()) {
+    std::cerr << "serial_init(): Failed to configure port " << serial.getDevice() << std::endl;
+    exit(1);
+  }
+}
