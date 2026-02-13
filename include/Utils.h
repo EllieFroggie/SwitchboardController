@@ -2,9 +2,12 @@
 #include <string>
 #include <iostream>
 #include <chrono>
+#include <atomic>
+#include <csignal>
 
 
 namespace Utils {
+
   std::string exec_cmd(const std::string& cmd, bool debug = false);
   bool is_num(const std::string& str);
   
@@ -22,6 +25,10 @@ namespace Utils {
         return false;
     }
     return false;
-}
+  }
+
+  extern std::atomic<bool> keep_running;
+
+  void signal_handler(int signal);
 
 }

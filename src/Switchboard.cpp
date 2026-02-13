@@ -49,7 +49,7 @@ Switchboard::SubsystemState Switchboard::run_serial_subsystem() {
 
   std::cout << "run_serial_subsystem(): Serial Subsystem ready." << std::endl;
 
-  while(true) {
+  while(Utils::keep_running) {
 
     if (Utils::anti_thrash_check(loop_count, last_print)) {
       close(epoll_fd);

@@ -62,7 +62,7 @@ void async_worker() {
   std::unique_lock<std::mutex> lock(workerMutex);
   auto nextRefresh = std::chrono::steady_clock::now() +  std::chrono::seconds(5);
 
-    while (true) {
+    while (Utils::keep_running) {
 
       workerCv.wait_until(lock, nextRefresh, [] { return workPending.load(); });
 
@@ -86,6 +86,7 @@ void async_worker() {
 
       lock.lock();
     }
+    return;
   }
 
   void notify_worker() {
