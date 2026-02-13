@@ -5,9 +5,7 @@
 #include <iostream>
 #include <thread>
 
-// clear && g++ -std=c++20 -Iinclude src/main.cpp src/SerialPort.cpp src/AudioManager.cpp src/VolumeWorker.cpp src/Switchboard.cpp src/Utils.cpp -o build/test_SwitchboardController
 // valgrind --leak-check=full --show-leak-kinds=all -s ./build/test_SwitchboardController
-// cp ./build/SwitchboardController $HOME/.local/bin/SwitchboardController
 
 int main() {
 
@@ -34,8 +32,7 @@ int main() {
     }
 
     std::cout << "main(): Joining worker thread..." << std::endl;
-    
- 
+     
     if (worker.joinable()) {
         worker.join();
     }

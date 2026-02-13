@@ -38,6 +38,7 @@ namespace Utils {
     return result;
   }
 
+
   void signal_handler(int signal) {
     if (signal == SIGINT || signal == SIGTERM) {
       std::cout << "\nsignal_handler(): Shutdown signal received. Cleaning up..."
