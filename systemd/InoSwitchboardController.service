@@ -2,7 +2,10 @@
 Description=Arduino Switchboard Control Service
 
 [Service]
-CPUQuota=5%
-
 Type=simple
 ExecStart=%h/.local/bin/SwitchboardController
+
+CPUQuota=5%
+
+RuntimeMaxSec=21600s
+Restart=always
